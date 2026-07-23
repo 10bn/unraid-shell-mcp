@@ -33,6 +33,17 @@ jobs:
       - name: Verify binary is statically linked
         run: file plugin/package/root/usr/local/sbin/unraid-shell-mcp | grep "statically linked"
 
+      - name: Build generic Linux tarballs (for install.sh)
+        run: |
+          mkdir -p release-assets
+          for arch in amd64 arm64; do
+            outdir="$(mktemp -d)"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -ldflags="-s -w" \
+              -o "$outdir/unraid-shell-mcp" ./cmd/unraid-shell-mcp
+            tar -C "$outdir" -czf "release-assets/unraid-shell-mcp-linux-${arch}.tar.gz" unraid-shell-mcp
+            rm -rf "$outdir"
+          done
+
       - name: Generate release .plg with this version's entities
         run: |
           mkdir -p release-assets
@@ -53,6 +64,8 @@ jobs:
             plugin/package/out/*.txz \
             plugin/package/out/*.txz.md5 \
             release-assets/unraid-shell-mcp.plg \
+            release-assets/unraid-shell-mcp-linux-amd64.tar.gz \
+            release-assets/unraid-shell-mcp-linux-arm64.tar.gz \
             --title "unraid-shell-mcp ${{ steps.version.outputs.version }}" \
             --generate-notes
 
