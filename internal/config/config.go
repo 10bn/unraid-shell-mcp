@@ -48,6 +48,15 @@ type Config struct {
 	// whitelist package.
 	CommandBlacklist []string `json:"commandBlacklist"`
 
+	// AllowAllCommands is an explicit opt-in that bypasses the
+	// commandWhitelist requirement entirely (every command is eligible to
+	// run). It does NOT bypass the hard-coded blocklist or
+	// CommandBlacklist — those still apply. Defaults to false: a fresh
+	// install stays fail-closed until an operator deliberately sets this
+	// to true (there is no way to end up here by omission, since the zero
+	// value is false). Enabling it is logged loudly at startup.
+	AllowAllCommands bool `json:"allowAllCommands"`
+
 	// TunnelMode selects how cloudflared exposes the server: "off",
 	// "quick" (ephemeral trycloudflare.com URL, no account needed), or
 	// "named" (stable hostname via a Cloudflare Zero Trust tunnel token).
@@ -124,6 +133,7 @@ func Default() (*Config, error) {
 		ListenAddr:       DefaultListenAddr,
 		CommandWhitelist: nil,
 		CommandBlacklist: nil,
+		AllowAllCommands: false,
 		TunnelMode:       TunnelModeOff,
 	}, nil
 }

@@ -52,7 +52,7 @@ func callExecuteWithArgs(t *testing.T, matcher *whitelist.Matcher, args map[stri
 }
 
 func TestExecuteCommandRejectsWhenNotWhitelisted(t *testing.T) {
-	matcher, err := whitelist.New(nil, nil)
+	matcher, err := whitelist.New(nil, nil, false)
 	if err != nil {
 		t.Fatalf("whitelist.New: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestExecuteCommandRejectsWhenNotWhitelisted(t *testing.T) {
 }
 
 func TestExecuteCommandRunsWhitelistedCommand(t *testing.T) {
-	matcher, err := whitelist.New([]string{`^echo\b.*$`}, nil)
+	matcher, err := whitelist.New([]string{`^echo\b.*$`}, nil, false)
 	if err != nil {
 		t.Fatalf("whitelist.New: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestExecuteCommandRunsWhitelistedCommand(t *testing.T) {
 }
 
 func TestExecuteCommandHardBlocklistWinsOverPermissiveWhitelist(t *testing.T) {
-	matcher, err := whitelist.New([]string{`.*`}, nil)
+	matcher, err := whitelist.New([]string{`.*`}, nil, false)
 	if err != nil {
 		t.Fatalf("whitelist.New: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestExecuteCommandInjectionViaPrefixWhitelistIsRejected(t *testing.T) {
 	// Regression test for the fix that made whitelist matching full-string:
 	// a whitelist entry anchored only at the start must not let a shell
 	// metacharacter smuggle in a second command.
-	matcher, err := whitelist.New([]string{`^echo\b`}, nil)
+	matcher, err := whitelist.New([]string{`^echo\b`}, nil, false)
 	if err != nil {
 		t.Fatalf("whitelist.New: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestExecuteCommandInjectionViaPrefixWhitelistIsRejected(t *testing.T) {
 }
 
 func TestExecuteCommandOutputCapTerminatesRunawayOutput(t *testing.T) {
-	matcher, err := whitelist.New([]string{`^yes\b.*$`}, nil)
+	matcher, err := whitelist.New([]string{`^yes\b.*$`}, nil, false)
 	if err != nil {
 		t.Fatalf("whitelist.New: %v", err)
 	}
