@@ -1,0 +1,125 @@
+<?xml version='1.0' standalone='yes'?>
+
+<!DOCTYPE PLUGIN [
+<!ENTITY name        "unraid-shell-mcp">
+<!ENTITY author      "10bn">
+<!ENTITY version     "0.1.0">
+<!ENTITY launch      "Settings/UnraidShellMcp">
+<!ENTITY repo        "10bn/unraid-shell-mcp">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
+<!ENTITY releaseURL  "https://github.com/&repo;/releases/download/v&version;">
+<!ENTITY plgNAME     "&name;-&version;-x86_64-1">
+<!ENTITY plgPATH     "/boot/config/plugins/&name;">
+<!ENTITY emhttp      "/usr/local/emhttp/plugins/&name;">
+<!ENTITY cfPath      "/usr/local/sbin/cloudflared">
+<!ENTITY cfURL       "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64">
+<!ENTITY rcMCP       "/etc/rc.d/rc.&name;">
+<!ENTITY rcCF        "/etc/rc.d/rc.&name;-cloudflared">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0">
+
+<CHANGES>
+##&name;
+###0.1.0
+- Initial release: MCP server exposing a fail-closed, whitelisted execute-command
+  tool over bearer-token-authenticated HTTP, with optional cloudflared tunnel
+  (quick or named) for remote access.
+</CHANGES>
+
+<!--
+The compiled Go binary + rc.d scripts + webGUI page, packaged as a standard
+Slackware .txz. Only re-downloaded when missing or when its MD5 no longer
+matches (Unraid's plugin installer skips the download otherwise), so this is
+cheap to re-run on every boot.
+-->
+<FILE Name="&plgPATH;/&plgNAME;.txz">
+<URL>&releaseURL;/&plgNAME;.txz</URL>
+</FILE>
+
+<FILE Name="&plgPATH;/&plgNAME;.txz.md5">
+<URL>&releaseURL;/&plgNAME;.txz.md5</URL>
+</FILE>
+
+<!--
+The 'install' script. Unraid re-runs this on every boot (the running system
+is rebuilt from the /boot overlay each time), so every step here must be
+safe to repeat.
+-->
+<FILE Run="/bin/bash" Method="install">
+<INLINE>
+set -e
+
+# Verify package integrity before installing anything.
+sum1=$(/usr/bin/md5sum &plgPATH;/&plgNAME;.txz)
+sum2=$(/usr/bin/cat &plgPATH;/&plgNAME;.txz.md5)
+if [ "${sum1:0:32}" != "${sum2:0:32}" ]; then
+    echo "unraid-shell-mcp: package md5 mismatch, refusing to install"
+    rm -f &plgPATH;/&plgNAME;.txz &plgPATH;/&plgNAME;.txz.md5
+    exit 1
+fi
+
+mkdir -p &plgPATH;
+upgradepkg --install-new &plgPATH;/&plgNAME;.txz
+
+chmod 0755 &rcMCP; &rcCF; 2>/dev/null || true
+
+# Fetch the official cloudflared binary once; skip if already present so we
+# don't hit the network on every boot.
+if [ ! -x &cfPath; ]; then
+    echo "unraid-shell-mcp: downloading cloudflared..."
+    if curl -fsSL -o &cfPath;.tmp &cfURL;; then
+        chmod 0755 &cfPath;.tmp
+        mv &cfPath;.tmp &cfPath;
+    else
+        echo "unraid-shell-mcp: failed to download cloudflared; tunnel will be unavailable until this succeeds"
+        rm -f &cfPath;.tmp
+    fi
+fi
+
+# Config.json (bearer token, whitelist, tunnel settings) is created with a
+# fresh random token on first run only; the binary never overwrites an
+# existing config file.
+&rcMCP; start
+&rcCF; start
+
+echo ""
+echo "-----------------------------------------------------------"
+echo " &name; has been installed."
+echo " Configure it at Settings -> Unraid Shell MCP."
+echo " WARNING: this exposes shell access to this NAS (array, Docker,"
+echo " VMs, shares) to anyone holding the bearer token. Configure the"
+echo " command whitelist and use Cloudflare Access before exposing it"
+echo " remotely."
+echo " Version: &version;"
+echo "-----------------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+<!--
+The 'remove' script.
+-->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+&rcCF; stop 2>/dev/null || true
+&rcMCP; stop 2>/dev/null || true
+
+removepkg &plgPATH;/&plgNAME;.txz 2>/dev/null || true
+rm -f &plgPATH;/&plgNAME;.txz &plgPATH;/&plgNAME;.txz.md5
+rm -rf &emhttp;
+rm -f &cfPath;
+
+echo ""
+echo "-----------------------------------------------------------"
+echo " &name; has been removed."
+echo " Its configuration (bearer token, whitelist) was left in place"
+echo " at &plgPATH;/config.json in case you reinstall. Delete it"
+echo " manually if you want a clean uninstall."
+echo " Version: &version;"
+echo "-----------------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+</PLUGIN>

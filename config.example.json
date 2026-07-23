@@ -1,0 +1,13 @@
+{
+  "bearerToken": "REPLACE-ME-WITH-A-LONG-RANDOM-SECRET",
+  "listenAddr": "127.0.0.1:8483",
+  "commandWhitelist": [
+    "^uptime$",
+    "^df -h$",
+    "^docker ps$"
+  ],
+  "commandBlacklist": [],
+  "tunnelMode": "off",
+  "cloudflareTunnelToken": "",
+  "cloudflareTunnelHostname": ""
+}
