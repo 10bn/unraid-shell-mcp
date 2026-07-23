@@ -3,7 +3,7 @@ package whitelist
 import "testing"
 
 func TestEmptyWhitelistFailsClosed(t *testing.T) {
-	m, err := New(nil, nil)
+	m, err := New(nil, nil, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -14,7 +14,7 @@ func TestEmptyWhitelistFailsClosed(t *testing.T) {
 }
 
 func TestWhitelistAllowsMatchingCommand(t *testing.T) {
-	m, err := New([]string{`^echo\b.*$`, `^uptime$`}, nil)
+	m, err := New([]string{`^echo\b.*$`, `^uptime$`}, nil, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestWhitelistAllowsMatchingCommand(t *testing.T) {
 }
 
 func TestWhitelistRejectsNonMatchingCommand(t *testing.T) {
-	m, err := New([]string{`^echo\b.*$`}, nil)
+	m, err := New([]string{`^echo\b.*$`}, nil, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestWhitelistRequiresFullMatchNotPrefix(t *testing.T) {
 	// A whitelist entry anchored only at the start (a common mistake) must
 	// not allow shell metacharacters to smuggle in a second, unintended
 	// command after the part the pattern actually describes.
-	m, err := New([]string{`^echo\b`}, nil)
+	m, err := New([]string{`^echo\b`}, nil, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestWhitelistRequiresFullMatchNotPrefix(t *testing.T) {
 }
 
 func TestUserBlacklistOverridesWhitelist(t *testing.T) {
-	m, err := New([]string{`.*`}, []string{`^cat\b`})
+	m, err := New([]string{`.*`}, []string{`^cat\b`}, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestUserBlacklistOverridesWhitelist(t *testing.T) {
 func TestHardBlocklistCannotBeOverriddenByWhitelist(t *testing.T) {
 	// A maximally permissive user whitelist must not defeat the hard-coded
 	// blocklist for catastrophic operations.
-	m, err := New([]string{`.*`}, nil)
+	m, err := New([]string{`.*`}, nil, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestHardBlocklistCannotBeOverriddenByWhitelist(t *testing.T) {
 }
 
 func TestHardBlocklistDoesNotFalsePositiveOnSafeCommands(t *testing.T) {
-	m, err := New([]string{`.*`}, nil)
+	m, err := New([]string{`.*`}, nil, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -113,10 +113,45 @@ func TestHardBlocklistDoesNotFalsePositiveOnSafeCommands(t *testing.T) {
 }
 
 func TestInvalidRegexReturnsError(t *testing.T) {
-	if _, err := New([]string{`(unclosed`}, nil); err == nil {
+	if _, err := New([]string{`(unclosed`}, nil, false); err == nil {
 		t.Fatal("expected error for invalid whitelist regex")
 	}
-	if _, err := New(nil, []string{`(unclosed`}); err == nil {
+	if _, err := New(nil, []string{`(unclosed`}, false); err == nil {
 		t.Fatal("expected error for invalid blacklist regex")
+	}
+}
+
+func TestAllowAllCommandsBypassesEmptyWhitelist(t *testing.T) {
+	m, err := New(nil, nil, true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, reason := m.Allowed("cat /etc/passwd"); !allowed {
+		t.Fatalf("expected allowAllCommands to allow an unlisted command, got reason: %s", reason)
+	}
+}
+
+func TestAllowAllCommandsStillBlockedByHardBlocklist(t *testing.T) {
+	// The opt-in widens the whitelist gate; it must never reach the
+	// hard-coded blocklist for catastrophic operations.
+	m, err := New(nil, nil, true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, reason := m.Allowed("rm -rf /"); allowed {
+		t.Fatalf("expected hard blocklist to still reject command under allowAllCommands, got: %s", reason)
+	}
+}
+
+func TestAllowAllCommandsStillBlockedByUserBlacklist(t *testing.T) {
+	m, err := New(nil, []string{`^cat\b`}, true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, reason := m.Allowed("cat /etc/shadow"); allowed {
+		t.Fatalf("expected commandBlacklist to still apply under allowAllCommands, got: %s", reason)
+	}
+	if allowed, reason := m.Allowed("echo hi"); !allowed {
+		t.Fatalf("expected non-blacklisted command to be allowed, got reason: %s", reason)
 	}
 }

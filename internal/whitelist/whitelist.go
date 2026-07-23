@@ -15,6 +15,11 @@
 //     string, not just a prefix of it. An empty whitelist allows nothing —
 //     there is no "empty whitelist means allow everything" fallback.
 //
+// An operator can explicitly opt into skipping step 3 entirely via the
+// allowAllCommands config flag (see New), but steps 1 and 2 still always
+// apply — allowAllCommands widens the whitelist gate, it does not disable
+// the blocklists.
+//
 // Whitelist patterns require a full match rather than "appears somewhere in
 // the command" specifically to prevent injection via shell metacharacters:
 // since commands run through /bin/sh -c, a whitelist entry like `^echo\b`
@@ -60,12 +65,19 @@ type Matcher struct {
 	hardBlocklist []*regexp.Regexp
 	blacklist     []*regexp.Regexp
 	whitelist     []*regexp.Regexp
+	allowAll      bool
 }
 
 // New compiles the user-supplied whitelist and blacklist patterns together
 // with the built-in hard blocklist. It returns an error naming the first
 // invalid regular expression encountered.
-func New(userWhitelist, userBlacklist []string) (*Matcher, error) {
+//
+// allowAll is the config.json "allowAllCommands" opt-in: when true, the
+// commandWhitelist requirement is skipped entirely (any command not
+// matching the hard blocklist or commandBlacklist is allowed). It never
+// bypasses those two — they are defense-in-depth precisely so that even a
+// wide-open whitelist policy still can't run a catastrophic command.
+func New(userWhitelist, userBlacklist []string, allowAll bool) (*Matcher, error) {
 	hard, err := compileAll(hardBlocklistPatterns)
 	if err != nil {
 		return nil, fmt.Errorf("internal hard blocklist pattern: %w", err)
@@ -78,7 +90,7 @@ func New(userWhitelist, userBlacklist []string) (*Matcher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("commandBlacklist: %w", err)
 	}
-	return &Matcher{hardBlocklist: hard, blacklist: bl, whitelist: wl}, nil
+	return &Matcher{hardBlocklist: hard, blacklist: bl, whitelist: wl, allowAll: allowAll}, nil
 }
 
 func compileAll(patterns []string) ([]*regexp.Regexp, error) {
@@ -104,6 +116,9 @@ func (m *Matcher) Allowed(command string) (bool, string) {
 		if re.MatchString(command) {
 			return false, "blocked by commandBlacklist"
 		}
+	}
+	if m.allowAll {
+		return true, ""
 	}
 	if len(m.whitelist) == 0 {
 		return false, "no commandWhitelist configured; fail-closed default rejects all commands"

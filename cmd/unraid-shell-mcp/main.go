@@ -31,6 +31,19 @@ var configGetFields = map[string]func(*config.Config) string{
 	"cloudflareTunnelHostname": func(c *config.Config) string { return c.CloudflareTunnelHostname },
 }
 
+const allowAllCommandsWarning = `
+################################################################
+# WARNING: allowAllCommands is enabled in config.json.
+# The commandWhitelist is NOT being enforced — every command is
+# eligible to run except the hard-coded safety blocklist and any
+# commandBlacklist entries. Anyone holding the bearer token has
+# full shell access to this machine.
+#
+# This is an explicit, deliberate opt-in. If that wasn't your
+# intent, set "allowAllCommands": false in config.json and
+# restart the service.
+################################################################`
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "config-get" {
 		runConfigGet(os.Args[2:])
@@ -57,11 +70,14 @@ func main() {
 		log.Fatal("no bearer token configured; refusing to start unauthenticated")
 	}
 
-	matcher, err := whitelist.New(cfg.CommandWhitelist, cfg.CommandBlacklist)
+	matcher, err := whitelist.New(cfg.CommandWhitelist, cfg.CommandBlacklist, cfg.AllowAllCommands)
 	if err != nil {
 		log.Fatalf("invalid command whitelist/blacklist: %v", err)
 	}
-	if len(cfg.CommandWhitelist) == 0 {
+	switch {
+	case cfg.AllowAllCommands:
+		log.Print(allowAllCommandsWarning)
+	case len(cfg.CommandWhitelist) == 0:
 		log.Printf("warning: commandWhitelist is empty; all execute-command calls will be rejected until it is configured")
 	}
 

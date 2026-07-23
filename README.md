@@ -86,7 +86,9 @@ the token like a root password, because it effectively is one.
 
 - **Fail closed by default.** With an empty `commandWhitelist`, every
   `execute-command` call is rejected. There is no "empty whitelist = allow
-  everything" fallback.
+  everything" fallback — the only way to allow everything is the explicit
+  `allowAllCommands` opt-in described below, which defaults to `false` and
+  has to be deliberately set.
 - **Whitelist first, then blacklist, then a hard-coded, non-configurable
   blocklist for catastrophic operations** (raw writes to `/dev/sd*`/`/dev/md*`,
   destructive `mdcmd` array commands, `mkfs`/`wipefs`/`shred` against block
@@ -111,6 +113,16 @@ the token like a root password, because it effectively is one.
   anything after `echo`. The blacklist and hard blocklist intentionally
   keep the opposite ("appears anywhere") semantics, so they still catch a
   dangerous fragment tucked after a `;` in an otherwise-permitted command.
+- **`allowAllCommands` (default `false`) is an explicit opt-in that skips
+  the whitelist requirement entirely** — every command becomes eligible to
+  run, subject only to the hard blocklist and `commandBlacklist`, which
+  still apply and cannot be bypassed by it. It exists for cases like local
+  testing where maintaining a whitelist is more friction than it's worth;
+  it is never the default, a fresh install/config file always has it
+  `false`, and enabling it prints a large, hard-to-miss warning in the
+  server log on every start. Toggling it in the webGUI requires an extra
+  JS confirmation dialog on save. Understand that enabling it hands full
+  shell access to anyone with the bearer token before you flip it.
 - **Output is capped at 1 MiB per stream (stdout/stderr).** A command that
   exceeds it is terminated immediately rather than left running until its
   timeout while consuming unbounded memory (e.g. `yes`, or `cat` on a huge

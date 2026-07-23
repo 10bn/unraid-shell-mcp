@@ -47,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $cfg !== null) {
     if ($action === 'save_settings') {
         $cfg['commandWhitelist'] = usm_lines_to_list($_POST['commandWhitelist'] ?? '');
         $cfg['commandBlacklist'] = usm_lines_to_list($_POST['commandBlacklist'] ?? '');
+        $cfg['allowAllCommands'] = isset($_POST['allowAllCommands']);
         $tunnelMode = $_POST['tunnelMode'] ?? 'off';
         $cfg['tunnelMode'] = in_array($tunnelMode, ['off', 'quick', 'named'], true) ? $tunnelMode : 'off';
         $cfg['cloudflareTunnelToken'] = trim($_POST['cloudflareTunnelToken'] ?? '');
@@ -81,12 +82,13 @@ $mcpStatus = $cfg !== null ? trim(shell_exec(escapeshellarg($rcMcp) . ' status 2
 $cfStatus  = $cfg !== null ? trim(shell_exec(escapeshellarg($rcCf) . ' status 2>&1')) : "not configured";
 $publicUrl = file_exists($urlFile) ? trim(file_get_contents($urlFile)) : "";
 
-$whitelistText = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []) : "";
-$blacklistText = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
-$tunnelMode    = $cfg['tunnelMode'] ?? 'off';
-$cfToken       = $cfg['cloudflareTunnelToken'] ?? '';
-$cfHostname    = $cfg['cloudflareTunnelHostname'] ?? '';
-$bearerToken   = $cfg['bearerToken'] ?? '';
+$whitelistText    = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []) : "";
+$blacklistText    = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
+$allowAllCommands = !empty($cfg['allowAllCommands']);
+$tunnelMode       = $cfg['tunnelMode'] ?? 'off';
+$cfToken          = $cfg['cloudflareTunnelToken'] ?? '';
+$cfHostname       = $cfg['cloudflareTunnelHostname'] ?? '';
+$bearerToken      = $cfg['bearerToken'] ?? '';
 ?>
 <style>
 .usm-warning {
@@ -123,6 +125,13 @@ textarea.usm-list {
     padding: 4px 8px;
     border-radius: 4px;
     word-break: break-all;
+}
+.usm-danger-toggle {
+    background: #f8d7da;
+    border: 1px solid #f1aeb5;
+    color: #58151c;
+    padding: 10px 14px;
+    border-radius: 4px;
 }
 </style>
 
@@ -181,15 +190,26 @@ textarea.usm-list {
     </form>
 </div>
 
-<form method="post">
+<form method="post" onsubmit="return !document.getElementById('allowAllCommands').checked || confirm('Enable \'allow all commands\'? Every command becomes eligible to run except the hard-coded safety blocklist and your commandBlacklist — the whitelist below stops being enforced. Anyone holding the bearer token gets full shell access. Continue?');">
 <input type="hidden" name="action" value="save_settings">
 
 <div class="usm-section">
     <h3>Command whitelist</h3>
-    <p>One regular expression per line. A command must match at least one line to be eligible
-       to run. <strong>An empty whitelist blocks all commands</strong> &mdash; there is no
-       "allow everything" fallback.</p>
+    <p>One regular expression per line. A command must match at least one line <em>in full</em>
+       (not just a prefix) to be eligible to run. <strong>An empty whitelist blocks all
+       commands</strong> &mdash; there is no "allow everything" fallback, unless you explicitly
+       enable the option below.</p>
     <textarea class="usm-list" name="commandWhitelist"><?= htmlspecialchars($whitelistText) ?></textarea>
+    <p class="usm-danger-toggle">
+        <label>
+            <input type="checkbox" id="allowAllCommands" name="allowAllCommands" <?= $allowAllCommands ? 'checked' : '' ?>>
+            <strong>Allow all commands</strong> &mdash; bypasses the whitelist above entirely.
+            The hard-coded safety blocklist and the command blacklist below still apply, but
+            everything else is permitted. This is a deliberate, explicit opt-in with a full
+            shell blast radius; leave it unchecked unless you specifically need it (e.g. local
+            testing). A loud warning is logged on every server start while this is enabled.
+        </label>
+    </p>
 </div>
 
 <div class="usm-section">
