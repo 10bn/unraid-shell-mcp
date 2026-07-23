@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.0">
+<!ENTITY version     "0.1.1">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,10 @@
 
 <CHANGES>
 ##&name;
+###0.1.1
+- Fix: Settings page forms were missing the webGUI's csrf_token, causing
+  Unraid to silently reject every Save/Start/Stop/Rotate submission (blank
+  page, nothing applied). All forms now include it.
 ###0.1.0
 - Initial release: MCP server exposing a fail-closed, whitelisted execute-command
   tool over bearer-token-authenticated HTTP, with optional cloudflared tunnel

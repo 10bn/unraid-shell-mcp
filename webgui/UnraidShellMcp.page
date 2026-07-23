@@ -38,6 +38,11 @@ function usm_lines_to_list($text) {
     return $out;
 }
 
+// Unraid's webGUI rejects any POST that doesn't carry the session's current
+// csrf_token (silently, as a blank page) — $var is populated by the page
+// wrapper that includes this file, before our code runs.
+$csrfToken = isset($var['csrf_token']) ? $var['csrf_token'] : '';
+
 $cfg = usm_load_config($cfgFile);
 $notice = "";
 
@@ -160,22 +165,27 @@ textarea.usm-list {
 
     <form method="post" style="display:inline">
         <input type="hidden" name="action" value="start_mcp">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <button type="submit">Start server</button>
     </form>
     <form method="post" style="display:inline">
         <input type="hidden" name="action" value="stop_mcp">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <button type="submit">Stop server</button>
     </form>
     <form method="post" style="display:inline">
         <input type="hidden" name="action" value="restart_mcp">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <button type="submit">Restart server</button>
     </form>
     <form method="post" style="display:inline">
         <input type="hidden" name="action" value="start_cf">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <button type="submit">Start tunnel</button>
     </form>
     <form method="post" style="display:inline">
         <input type="hidden" name="action" value="stop_cf">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <button type="submit">Stop tunnel</button>
     </form>
 </div>
@@ -186,12 +196,14 @@ textarea.usm-list {
     <p class="usm-token"><?= htmlspecialchars($bearerToken) ?></p>
     <form method="post" onsubmit="return confirm('Rotate the bearer token? Existing MCP clients will need the new token.');">
         <input type="hidden" name="action" value="rotate_token">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <button type="submit">Rotate token</button>
     </form>
 </div>
 
 <form method="post" onsubmit="return !document.getElementById('allowAllCommands').checked || confirm('Enable \'allow all commands\'? Every command becomes eligible to run except the hard-coded safety blocklist and your commandBlacklist — the whitelist below stops being enforced. Anyone holding the bearer token gets full shell access. Continue?');">
 <input type="hidden" name="action" value="save_settings">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
 
 <div class="usm-section">
     <h3>Command whitelist</h3>
