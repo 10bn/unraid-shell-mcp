@@ -14,7 +14,7 @@ func TestEmptyWhitelistFailsClosed(t *testing.T) {
 }
 
 func TestWhitelistAllowsMatchingCommand(t *testing.T) {
-	m, err := New([]string{`^echo\b`, `^uptime$`}, nil)
+	m, err := New([]string{`^echo\b.*$`, `^uptime$`}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -27,12 +27,29 @@ func TestWhitelistAllowsMatchingCommand(t *testing.T) {
 }
 
 func TestWhitelistRejectsNonMatchingCommand(t *testing.T) {
-	m, err := New([]string{`^echo\b`}, nil)
+	m, err := New([]string{`^echo\b.*$`}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	if allowed, _ := m.Allowed("cat /etc/shadow"); allowed {
 		t.Fatal("expected non-matching command to be rejected")
+	}
+}
+
+func TestWhitelistRequiresFullMatchNotPrefix(t *testing.T) {
+	// A whitelist entry anchored only at the start (a common mistake) must
+	// not allow shell metacharacters to smuggle in a second, unintended
+	// command after the part the pattern actually describes.
+	m, err := New([]string{`^echo\b`}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, reason := m.Allowed("echo hi; cat /etc/shadow"); allowed {
+		t.Fatalf("expected injected command to be rejected under full-match semantics, reason: %s", reason)
+	}
+	// The pattern still allows the one exact string it fully describes.
+	if allowed, reason := m.Allowed("echo"); !allowed {
+		t.Fatalf("expected exact match to be allowed, got reason: %s", reason)
 	}
 }
 

@@ -100,8 +100,25 @@ the token like a root password, because it effectively is one.
 - **`config.json` is written with `0600` permissions.** On Unraid it's never
   served by the webGUI without going through Unraid's own authenticated
   session; on generic Linux, nothing but the service itself and root reads it.
-- **Keep the whitelist as narrow as possible.** Prefer specific, anchored
-  patterns (`^docker ps$`) over broad ones (`^docker`).
+- **Whitelist patterns must match the entire command, not just a prefix.**
+  Commands run via `/bin/sh -c <command>`, so a pattern like `^echo\b` under
+  ordinary "appears somewhere in the string" regex matching would also
+  match — and therefore fully execute — `echo hi; cat /etc/shadow`, since
+  the pattern only checks that the string *starts* with `echo`. To close
+  that off, whitelist patterns are required to match the command's entire
+  length; that command would need `^echo\b.*$` to be allowed, and the
+  operator, by writing `.*$`, is explicitly the one deciding to allow
+  anything after `echo`. The blacklist and hard blocklist intentionally
+  keep the opposite ("appears anywhere") semantics, so they still catch a
+  dangerous fragment tucked after a `;` in an otherwise-permitted command.
+- **Output is capped at 1 MiB per stream (stdout/stderr).** A command that
+  exceeds it is terminated immediately rather than left running until its
+  timeout while consuming unbounded memory (e.g. `yes`, or `cat` on a huge
+  file).
+- **Every invocation is audit-logged** as a structured JSON line on stdout —
+  the command text, outcome (`success`/`rejected`/`timeout`/`output_cap`/
+  `error`), exit code, and duration — captured by the rc.d log file on
+  Unraid and by `journalctl` under systemd, with no extra configuration.
 - **If you expose this outside your LAN** (e.g. via the Unraid plugin's
   built-in Cloudflare tunnel, or your own reverse proxy in front of the
   generic-Linux install), **put it behind
@@ -123,7 +140,13 @@ choice, and is intentionally not what this project provides.
   request before it reaches the MCP handler.
 - The one MCP tool, `execute-command`, runs `/bin/sh -c <command>` after
   checking the command against the hard blocklist, then the configured
-  blacklist, then the configured whitelist (see `internal/whitelist`).
+  blacklist (both substring/"appears anywhere" matches), then the configured
+  whitelist, which must match the command's *entire* length (see
+  `internal/whitelist`). Output is capped at 1 MiB per stream — a command
+  that runs past that is killed (as a process group, so backgrounded or
+  piped children die too, not just the immediate `/bin/sh` process) rather
+  than left running until its timeout. Every invocation, allowed or
+  rejected, is logged as a structured JSON audit line on stdout.
 - Configuration lives at `/boot/config/plugins/unraid-shell-mcp/config.json`
   (persists across reboots, since Unraid boots from a RAM overlay and only
   `/boot` is durable). See `config.example.json` for the shape.
