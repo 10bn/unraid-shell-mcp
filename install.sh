@@ -5,6 +5,15 @@
 # reads tunnelMode from config.json and starts/skips a Cloudflare tunnel
 # accordingly (same behavior as the Unraid plugin's rc.d cloudflared script).
 #
+# On a fresh install (no existing config.json) this interactively prompts,
+# one at a time, for every setting config.json holds: listen address, bearer
+# token, command whitelist/blacklist entries, the allowAllCommands opt-in,
+# and Cloudflare tunnel mode/credentials — so the service can come up fully
+# configured on first start instead of needing a manual edit afterward.
+# Press Enter to accept the default shown in [brackets] for any prompt. If
+# config.json already exists (e.g. re-running this script), it is left
+# untouched and none of this is asked again.
+#
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/10bn/unraid-shell-mcp/main/install.sh | sudo bash
 #
@@ -15,6 +24,11 @@
 #   BASE_URL           override the release base URL, mainly for testing
 #                      against a local mirror (default: the GitHub repo's
 #                      releases)
+#   NONINTERACTIVE     set to 1 to skip all prompts and use fail-closed
+#                      defaults (empty whitelist, tunnelMode off), e.g. for
+#                      scripted/unattended installs. Prompts are also
+#                      skipped automatically when no controlling terminal
+#                      (/dev/tty) is available.
 
 set -euo pipefail
 
@@ -29,6 +43,53 @@ SERVICE_FILE="/etc/systemd/system/unraid-shell-mcp.service"
 CLOUDFLARED_BIN="${INSTALL_DIR}/cloudflared"
 CLOUDFLARED_WRAPPER="${INSTALL_DIR}/unraid-shell-mcp-cloudflared"
 CLOUDFLARED_SERVICE_FILE="/etc/systemd/system/unraid-shell-mcp-cloudflared.service"
+
+INTERACTIVE=1
+if [ "${NONINTERACTIVE:-0}" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+    INTERACTIVE=0
+fi
+
+# ask PROMPT DEFAULT: prints the answer (or DEFAULT if blank/non-interactive)
+# to stdout. Reads from /dev/tty, not the script's own stdin, since this
+# script is normally run as `curl ... | sudo bash` — stdin is the script
+# source itself, not a terminal.
+ask() {
+    local prompt="$1" default="$2" answer=""
+    if [ "$INTERACTIVE" -eq 1 ]; then
+        read -r -p "$prompt [$default]: " answer < /dev/tty || true
+    fi
+    printf '%s' "${answer:-$default}"
+}
+
+# confirm PROMPT: returns success (0) only if the user interactively types
+# "yes"; always returns failure (1) when non-interactive or on any other
+# input, so the caller's default is always the safe one.
+confirm() {
+    local prompt="$1" answer=""
+    [ "$INTERACTIVE" -eq 1 ] || return 1
+    read -r -p "$prompt Type 'yes' to confirm [no]: " answer < /dev/tty || true
+    [ "$answer" = "yes" ]
+}
+
+# json_escape STRING: minimal JSON string escaping (backslash, double-quote)
+# for the regex patterns and tokens this script embeds into config.json.
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
+}
+
+# json_array [STRING...]: prints a JSON array of string elements.
+json_array() {
+    local first=1 item
+    printf '['
+    for item in "$@"; do
+        [ "$first" -eq 1 ] && first=0 || printf ', '
+        printf '"%s"' "$(json_escape "$item")"
+    done
+    printf ']'
+}
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "This installer needs to write to ${INSTALL_DIR}, ${CONFIG_DIR}, and" >&2
@@ -78,6 +139,95 @@ install -m 0755 "${TMPDIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
 
 echo "Preparing config directory ${CONFIG_DIR}..."
 install -d -m 0700 "$CONFIG_DIR"
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Existing config found at ${CONFIG_FILE}; leaving it untouched."
+else
+    LISTEN_ADDR="127.0.0.1:8483"
+    BEARER_TOKEN=""
+    WHITELIST=()
+    BLACKLIST=()
+    ALLOW_ALL="false"
+    SETUP_TUNNEL_MODE="off"
+    CF_TOKEN=""
+    CF_HOSTNAME=""
+
+    if [ "$INTERACTIVE" -eq 1 ]; then
+        echo ""
+        echo "--- unraid-shell-mcp first-time setup ---"
+        echo "Press Enter to accept the default shown in [brackets] for any prompt."
+        echo ""
+
+        LISTEN_ADDR="$(ask "Listen address" "$LISTEN_ADDR")"
+
+        BEARER_TOKEN="$(ask "Bearer token (blank = generate a random one, recommended)" "")"
+
+        echo ""
+        echo "Command whitelist: regex patterns the server may execute. A pattern must"
+        echo "match the FULL command string, not just a prefix (e.g. '^echo\\b.*\$', not"
+        echo "just '^echo\\b'). Enter one at a time; blank line to finish. An empty"
+        echo "whitelist blocks all commands until you add one later."
+        while true; do
+            pattern="$(ask "  whitelist pattern (blank to finish)" "")"
+            [ -z "$pattern" ] && break
+            WHITELIST+=("$pattern")
+        done
+
+        echo ""
+        echo "Command blacklist: regex patterns to always reject, checked before the"
+        echo "whitelist (in addition to the hard-coded safety blocklist, which always"
+        echo "applies and can't be configured). Blank line to finish; can be empty."
+        while true; do
+            pattern="$(ask "  blacklist pattern (blank to finish)" "")"
+            [ -z "$pattern" ] && break
+            BLACKLIST+=("$pattern")
+        done
+
+        echo ""
+        if confirm "Allow ALL commands, bypassing the whitelist entirely (still subject to the hard-coded blocklist and any blacklist above)? Anyone with the bearer token gets full shell access."; then
+            ALLOW_ALL="true"
+        fi
+
+        echo ""
+        echo "Cloudflare tunnel mode: off (default), quick (no account, random URL),"
+        echo "or named (stable hostname via Cloudflare Zero Trust)."
+        while true; do
+            SETUP_TUNNEL_MODE="$(ask "  tunnelMode (off/quick/named)" "off")"
+            case "$SETUP_TUNNEL_MODE" in
+                off|quick|named) break ;;
+                *) echo "  Please enter off, quick, or named." ;;
+            esac
+        done
+        if [ "$SETUP_TUNNEL_MODE" = "named" ]; then
+            CF_TOKEN="$(ask "  cloudflareTunnelToken (from the Zero Trust dashboard)" "")"
+            CF_HOSTNAME="$(ask "  cloudflareTunnelHostname" "")"
+        fi
+        echo ""
+    else
+        echo "No controlling terminal (or NONINTERACTIVE=1); skipping setup prompts."
+        echo "Using fail-closed defaults (empty whitelist, tunnelMode off) — edit"
+        echo "${CONFIG_FILE} afterward to configure."
+    fi
+
+    if [ -z "$BEARER_TOKEN" ]; then
+        BEARER_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+    fi
+
+    cat > "$CONFIG_FILE" <<EOF
+{
+  "bearerToken": "$(json_escape "$BEARER_TOKEN")",
+  "listenAddr": "$(json_escape "$LISTEN_ADDR")",
+  "commandWhitelist": $(json_array "${WHITELIST[@]}"),
+  "commandBlacklist": $(json_array "${BLACKLIST[@]}"),
+  "allowAllCommands": ${ALLOW_ALL},
+  "tunnelMode": "$(json_escape "$SETUP_TUNNEL_MODE")",
+  "cloudflareTunnelToken": "$(json_escape "$CF_TOKEN")",
+  "cloudflareTunnelHostname": "$(json_escape "$CF_HOSTNAME")"
+}
+EOF
+    chmod 0600 "$CONFIG_FILE"
+    echo "Wrote ${CONFIG_FILE}."
+fi
 
 echo "Installing systemd unit at ${SERVICE_FILE}..."
 cat > "$SERVICE_FILE" <<EOF
@@ -234,6 +384,11 @@ if [ -f "$CONFIG_FILE" ]; then
     TUNNEL_MODE="$("${INSTALL_DIR}/${BINARY_NAME}" config-get -config "$CONFIG_FILE" tunnelMode 2>/dev/null || true)"
 fi
 
+WHITELIST_EMPTY=1
+if [ -f "$CONFIG_FILE" ] && ! grep -q '"commandWhitelist": \[\]' "$CONFIG_FILE"; then
+    WHITELIST_EMPTY=0
+fi
+
 echo ""
 echo "-----------------------------------------------------------"
 echo " unraid-shell-mcp installed."
@@ -244,10 +399,17 @@ if [ -n "$TOKEN" ]; then
     echo " Bearer token:        ${TOKEN}"
 fi
 echo ""
-echo " The command whitelist is empty by default, so no commands can run"
-echo " yet. Edit commandWhitelist/commandBlacklist in ${CONFIG_FILE} (regex"
-echo " patterns, one per array entry), then:"
-echo "   systemctl restart unraid-shell-mcp"
+if [ "$WHITELIST_EMPTY" -eq 1 ]; then
+    echo " The command whitelist is empty, so no commands can run yet. Edit"
+    echo " commandWhitelist/commandBlacklist in ${CONFIG_FILE} (regex patterns,"
+    echo " one per array entry — each must match the full command string),"
+    echo " then:"
+    echo "   systemctl restart unraid-shell-mcp"
+else
+    echo " Command whitelist/blacklist were set during setup. To change them,"
+    echo " edit ${CONFIG_FILE}, then:"
+    echo "   systemctl restart unraid-shell-mcp"
+fi
 echo ""
 echo " To expose this over Cloudflare instead of just localhost, set"
 echo " tunnelMode to \"quick\" (no account needed) or \"named\" (stable"

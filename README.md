@@ -41,20 +41,37 @@ any `amd64`/`arm64` Linux host:
 curl -fsSL https://raw.githubusercontent.com/10bn/unraid-shell-mcp/main/install.sh | sudo bash
 ```
 
-This downloads the latest release's binary for your architecture, installs it
-to `/usr/local/bin/unraid-shell-mcp`, writes a `unraid-shell-mcp.service` unit
-to `/etc/systemd/system/`, and starts it. It also installs `cloudflared` and a
-second service, `unraid-shell-mcp-cloudflared`, that reads `tunnelMode` from
-config.json the same way the Unraid plugin does (see "Cloudflare tunnel"
-below) — harmless and idle while `tunnelMode` is `"off"`, the default. On
-first start it generates `/etc/unraid-shell-mcp/config.json` (`0600`, random
-bearer token, empty whitelist) and prints the token to your terminal — copy
-it now, since nothing else displays it again (there's no webGUI outside
-Unraid).
+This downloads the latest release's binary for your architecture and installs
+it to `/usr/local/bin/unraid-shell-mcp`. On a fresh install (no config.json
+yet) it then walks you through **every setting config.json holds**, one
+prompt at a time — press Enter to accept the default shown in `[brackets]`:
 
-The whitelist is empty by default, so no commands can run yet. Edit
-`commandWhitelist`/`commandBlacklist` in that config file (one regex per
-array entry — see `config.example.json`), then:
+- listen address
+- bearer token (blank to auto-generate a random one — recommended; there is
+  no default token either way)
+- command whitelist entries (blank line to stop adding more; leaving it
+  empty means no commands can run until you add one later)
+- command blacklist entries (same, optional)
+- whether to enable `allowAllCommands` (asks you to type `yes` to confirm —
+  see the Security section on what this means)
+- Cloudflare tunnel mode (`off`/`quick`/`named`) and, for `named`, the
+  Cloudflare tunnel token/hostname
+
+It then writes `/etc/unraid-shell-mcp/config.json` (`0600`) with your
+answers, writes a `unraid-shell-mcp.service` unit to `/etc/systemd/system/`,
+installs `cloudflared` and a second service, `unraid-shell-mcp-cloudflared`,
+that acts on whatever `tunnelMode` you chose (harmless and idle if you left
+it `off`, the default — see "Cloudflare tunnel" below), and starts both.
+The bearer token is printed to your terminal at the end — copy it now, since
+nothing else displays it again (there's no webGUI outside Unraid).
+
+Running it non-interactively (no terminal attached, e.g. from another
+script) or with `NONINTERACTIVE=1` skips all of the above and falls back to
+the same fail-closed defaults as before: empty whitelist, `tunnelMode off`,
+random token. **Re-running the installer never touches an existing
+config.json** — if one is already there, none of this is asked again and
+your settings are left exactly as they are; edit the file directly and
+restart the relevant service instead:
 
 ```sh
 sudo systemctl restart unraid-shell-mcp
@@ -69,10 +86,11 @@ sudo ./uninstall.sh                      # remove binary + service (keeps config
 sudo ./uninstall.sh --purge              # also delete the config (token, whitelist)
 ```
 
-Install a specific version instead of latest, or override install paths:
+Install a specific version instead of latest, override install paths, or
+force a non-interactive install with defaults:
 
 ```sh
-VERSION=v0.2.0 INSTALL_DIR=/opt/bin CONFIG_DIR=/opt/etc/unraid-shell-mcp \
+VERSION=v0.2.0 INSTALL_DIR=/opt/bin CONFIG_DIR=/opt/etc/unraid-shell-mcp NONINTERACTIVE=1 \
   curl -fsSL https://raw.githubusercontent.com/10bn/unraid-shell-mcp/main/install.sh | sudo -E bash
 ```
 
@@ -272,6 +290,14 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
   `0600` permissions, and confirming bearer-token auth against the installed
   binary. It has also been run successfully on a real systemd host (Debian)
   outside this sandbox, including the `systemctl enable --now` path this
-  sandbox itself can't exercise (no running systemd instance here).
+  sandbox itself can't exercise (no running systemd instance here). The
+  interactive first-run prompts (listen address, whitelist/blacklist entries,
+  `allowAllCommands`, tunnel mode, JSON escaping of special characters in
+  patterns) were exercised end-to-end against a real pseudo-terminal in this
+  sandbox — necessary because these prompts read from `/dev/tty`, not stdin,
+  so they can't be driven by ordinary piped input — confirming the generated
+  `config.json` matched the answers exactly and that the installed binary
+  enforced them correctly (auth, whitelist/blacklist, `allowAllCommands`) on
+  first start.
 - No Unraid Community Applications submission — install via the raw `.plg`
   URL above only.
