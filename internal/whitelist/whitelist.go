@@ -5,11 +5,25 @@
 //  1. hardBlocklist is checked first and can never be overridden by user
 //     configuration. It exists to stop catastrophic operations (raw disk
 //     writes, array destruction, wiping the filesystem) even if an operator
-//     misconfigures the whitelist.
-//  2. The user-supplied blacklist is checked next.
-//  3. The command must then match at least one user-supplied whitelist
-//     pattern. An empty whitelist allows nothing — there is no "empty
-//     whitelist means allow everything" fallback.
+//     misconfigures the whitelist. It uses substring semantics (matches if
+//     the pattern appears anywhere in the command) so it still catches a
+//     dangerous fragment tucked after a `;` or `&&` in a longer command.
+//  2. The user-supplied blacklist is checked next, with the same substring
+//     semantics as the hard blocklist, for the same reason.
+//  3. The command must then fully match at least one user-supplied
+//     whitelist pattern — the pattern must account for the entire command
+//     string, not just a prefix of it. An empty whitelist allows nothing —
+//     there is no "empty whitelist means allow everything" fallback.
+//
+// Whitelist patterns require a full match rather than "appears somewhere in
+// the command" specifically to prevent injection via shell metacharacters:
+// since commands run through /bin/sh -c, a whitelist entry like `^echo\b`
+// under substring semantics would also match (and therefore execute in
+// full) "echo hi; rm -rf /etc/shadow", because MatchString only checks that
+// "echo" appears at the start — it does not care what follows. Requiring a
+// full match means the whitelist pattern itself must account for every
+// character the operator intends to allow (e.g. `^echo\b.*$` or an exact
+// `^echo hi$`).
 package whitelist
 
 import (
@@ -95,9 +109,18 @@ func (m *Matcher) Allowed(command string) (bool, string) {
 		return false, "no commandWhitelist configured; fail-closed default rejects all commands"
 	}
 	for _, re := range m.whitelist {
-		if re.MatchString(command) {
+		if fullMatch(re, command) {
 			return true, ""
 		}
 	}
-	return false, "command does not match any commandWhitelist pattern"
+	return false, "command does not fully match any commandWhitelist pattern"
+}
+
+// fullMatch reports whether re's match spans command's entire length,
+// rather than merely appearing somewhere within it. Go's regexp package,
+// unlike e.g. Python's re.fullmatch, has no built-in full-match mode, so
+// this checks that the leftmost match starts at 0 and ends at len(command).
+func fullMatch(re *regexp.Regexp, command string) bool {
+	loc := re.FindStringIndex(command)
+	return loc != nil && loc[0] == 0 && loc[1] == len(command)
 }

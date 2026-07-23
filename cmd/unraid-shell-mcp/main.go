@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -64,7 +65,8 @@ func main() {
 		log.Printf("warning: commandWhitelist is empty; all execute-command calls will be rejected until it is configured")
 	}
 
-	mcpSrv := mcp.New(matcher)
+	auditLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	mcpSrv := mcp.New(matcher, auditLogger)
 	streamable := mcpserver.NewStreamableHTTPServer(mcpSrv)
 
 	mux := http.NewServeMux()
