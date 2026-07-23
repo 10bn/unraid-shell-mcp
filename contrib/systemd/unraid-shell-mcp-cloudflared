@@ -1,0 +1,83 @@
+#!/bin/bash
+# unraid-shell-mcp-cloudflared - optional Cloudflare tunnel for unraid-shell-mcp
+# on generic Linux (systemd) installs. Reads tunnel settings from config.json
+# via `unraid-shell-mcp config-get` (the same mechanism the Unraid rc.d
+# version of this script uses), so tunnelMode/cloudflareTunnelToken/
+# cloudflareTunnelHostname behave identically on both install paths.
+#
+# Paths are parameterized via environment variables so this one script works
+# for any INSTALL_DIR/CONFIG_DIR combination; the systemd unit that runs it
+# sets them to match the actual install.
+#
+# install.sh writes this same content (with the install's actual defaults
+# baked into the unit's Environment= lines, not into this file) to
+# <INSTALL_DIR>/unraid-shell-mcp-cloudflared. This copy is kept for reference
+# and for anyone customizing the service by hand instead of using the script.
+
+set -uo pipefail
+
+BINARY="${UNRAID_SHELL_MCP_BINARY:-/usr/local/bin/unraid-shell-mcp}"
+CONFIG_FILE="${UNRAID_SHELL_MCP_CONFIG:-/etc/unraid-shell-mcp/config.json}"
+CLOUDFLARED="${CLOUDFLARED_BINARY:-/usr/local/bin/cloudflared}"
+LOGFILE="/var/log/unraid-shell-mcp-cloudflared.log"
+URLFILE="/run/unraid-shell-mcp-cloudflared-url"
+
+config_get() {
+    "$BINARY" config-get -config "$CONFIG_FILE" "$1" 2>/dev/null
+}
+
+# watch_quick_url tails LOGFILE until cloudflared prints the ephemeral
+# *.trycloudflare.com URL, then writes it to URLFILE and echoes it (so it
+# also lands in `journalctl -u unraid-shell-mcp-cloudflared`). Runs as a
+# short-lived background job; gives up after a generous timeout in case
+# cloudflared fails to connect.
+watch_quick_url() {
+    local deadline=$((SECONDS + 60))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        local url
+        url="$(grep -oE 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' "$LOGFILE" 2>/dev/null | head -n1)"
+        if [ -n "$url" ]; then
+            echo "$url" >"$URLFILE"
+            echo "Public URL: $url"
+            return 0
+        fi
+        sleep 1
+    done
+}
+
+tunnel_mode="$(config_get tunnelMode)"
+
+if [ "$tunnel_mode" = "off" ] || [ -z "$tunnel_mode" ]; then
+    echo "tunnelMode is off; nothing to do"
+    exit 0
+fi
+
+if [ ! -x "$CLOUDFLARED" ]; then
+    echo "cloudflared binary not found at $CLOUDFLARED" >&2
+    exit 1
+fi
+
+rm -f "$URLFILE"
+: >"$LOGFILE"
+
+case "$tunnel_mode" in
+    quick)
+        listen_addr="$(config_get listenAddr)"
+        echo "Starting cloudflared quick tunnel for http://${listen_addr}..."
+        watch_quick_url &
+        "$CLOUDFLARED" tunnel --no-autoupdate --url "http://${listen_addr}" 2>&1 | tee -a "$LOGFILE"
+        ;;
+    named)
+        token="$(config_get cloudflareTunnelToken)"
+        if [ -z "$token" ]; then
+            echo "tunnelMode is 'named' but no cloudflareTunnelToken is configured" >&2
+            exit 1
+        fi
+        echo "Starting cloudflared named tunnel..."
+        "$CLOUDFLARED" tunnel --no-autoupdate run --token "$token" 2>&1 | tee -a "$LOGFILE"
+        ;;
+    *)
+        echo "unknown tunnelMode: $tunnel_mode" >&2
+        exit 1
+        ;;
+esac

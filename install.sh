@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Installs unraid-shell-mcp as a systemd service on a generic Linux host
 # (i.e. not the Unraid .plg path — see plugin/unraid-shell-mcp.plg for that).
+# Also installs a second systemd service, unraid-shell-mcp-cloudflared, that
+# reads tunnelMode from config.json and starts/skips a Cloudflare tunnel
+# accordingly (same behavior as the Unraid plugin's rc.d cloudflared script).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/10bn/unraid-shell-mcp/main/install.sh | sudo bash
@@ -23,6 +26,9 @@ BASE_URL="${BASE_URL:-https://github.com/${REPO}/releases}"
 BINARY_NAME="unraid-shell-mcp"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 SERVICE_FILE="/etc/systemd/system/unraid-shell-mcp.service"
+CLOUDFLARED_BIN="${INSTALL_DIR}/cloudflared"
+CLOUDFLARED_WRAPPER="${INSTALL_DIR}/unraid-shell-mcp-cloudflared"
+CLOUDFLARED_SERVICE_FILE="/etc/systemd/system/unraid-shell-mcp-cloudflared.service"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "This installer needs to write to ${INSTALL_DIR}, ${CONFIG_DIR}, and" >&2
@@ -91,20 +97,131 @@ User=root
 WantedBy=multi-user.target
 EOF
 
+# Optional Cloudflare tunnel support, driven by tunnelMode in config.json
+# (same "off"/"quick"/"named" values as the Unraid plugin). Installed
+# unconditionally but harmless when tunnelMode is "off": the wrapper script
+# just exits immediately in that case.
+if [ ! -x "$CLOUDFLARED_BIN" ]; then
+    echo "Downloading cloudflared..."
+    if curl -fsSL -o "${CLOUDFLARED_BIN}.tmp" "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}"; then
+        chmod 0755 "${CLOUDFLARED_BIN}.tmp"
+        mv "${CLOUDFLARED_BIN}.tmp" "$CLOUDFLARED_BIN"
+    else
+        echo "Warning: failed to download cloudflared; tunnelMode quick/named will" >&2
+        echo "not work until ${CLOUDFLARED_BIN} exists and is executable." >&2
+        rm -f "${CLOUDFLARED_BIN}.tmp"
+    fi
+fi
+
+cat > "$CLOUDFLARED_WRAPPER" <<'EOF'
+#!/bin/bash
+# unraid-shell-mcp-cloudflared - optional Cloudflare tunnel for unraid-shell-mcp.
+# Reads tunnel settings from config.json via `unraid-shell-mcp config-get`.
+# See contrib/systemd/unraid-shell-mcp-cloudflared in the repo for the
+# annotated version of this same script.
+
+set -uo pipefail
+
+BINARY="${UNRAID_SHELL_MCP_BINARY:-/usr/local/bin/unraid-shell-mcp}"
+CONFIG_FILE="${UNRAID_SHELL_MCP_CONFIG:-/etc/unraid-shell-mcp/config.json}"
+CLOUDFLARED="${CLOUDFLARED_BINARY:-/usr/local/bin/cloudflared}"
+LOGFILE="/var/log/unraid-shell-mcp-cloudflared.log"
+URLFILE="/run/unraid-shell-mcp-cloudflared-url"
+
+config_get() {
+    "$BINARY" config-get -config "$CONFIG_FILE" "$1" 2>/dev/null
+}
+
+watch_quick_url() {
+    local deadline=$((SECONDS + 60))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        local url
+        url="$(grep -oE 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' "$LOGFILE" 2>/dev/null | head -n1)"
+        if [ -n "$url" ]; then
+            echo "$url" >"$URLFILE"
+            echo "Public URL: $url"
+            return 0
+        fi
+        sleep 1
+    done
+}
+
+tunnel_mode="$(config_get tunnelMode)"
+
+if [ "$tunnel_mode" = "off" ] || [ -z "$tunnel_mode" ]; then
+    echo "tunnelMode is off; nothing to do"
+    exit 0
+fi
+
+if [ ! -x "$CLOUDFLARED" ]; then
+    echo "cloudflared binary not found at $CLOUDFLARED" >&2
+    exit 1
+fi
+
+rm -f "$URLFILE"
+: >"$LOGFILE"
+
+case "$tunnel_mode" in
+    quick)
+        listen_addr="$(config_get listenAddr)"
+        echo "Starting cloudflared quick tunnel for http://${listen_addr}..."
+        watch_quick_url &
+        "$CLOUDFLARED" tunnel --no-autoupdate --url "http://${listen_addr}" 2>&1 | tee -a "$LOGFILE"
+        ;;
+    named)
+        token="$(config_get cloudflareTunnelToken)"
+        if [ -z "$token" ]; then
+            echo "tunnelMode is 'named' but no cloudflareTunnelToken is configured" >&2
+            exit 1
+        fi
+        echo "Starting cloudflared named tunnel..."
+        "$CLOUDFLARED" tunnel --no-autoupdate run --token "$token" 2>&1 | tee -a "$LOGFILE"
+        ;;
+    *)
+        echo "unknown tunnelMode: $tunnel_mode" >&2
+        exit 1
+        ;;
+esac
+EOF
+chmod 0755 "$CLOUDFLARED_WRAPPER"
+
+cat > "$CLOUDFLARED_SERVICE_FILE" <<EOF
+[Unit]
+Description=unraid-shell-mcp-cloudflared - optional Cloudflare tunnel for unraid-shell-mcp
+After=network.target unraid-shell-mcp.service
+Documentation=https://github.com/${REPO}
+
+[Service]
+Type=simple
+Environment=UNRAID_SHELL_MCP_BINARY=${INSTALL_DIR}/${BINARY_NAME}
+Environment=UNRAID_SHELL_MCP_CONFIG=${CONFIG_FILE}
+Environment=CLOUDFLARED_BINARY=${CLOUDFLARED_BIN}
+ExecStart=${CLOUDFLARED_WRAPPER}
+Restart=on-failure
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     systemctl daemon-reload
     systemctl enable --now unraid-shell-mcp
+    systemctl enable --now unraid-shell-mcp-cloudflared
     # Give the service a moment to write its first-run config.json.
     for _ in $(seq 1 10); do
         [ -f "$CONFIG_FILE" ] && break
         sleep 0.5
     done
     STATUS="$(systemctl is-active unraid-shell-mcp 2>&1 || true)"
+    CF_STATUS="$(systemctl is-active unraid-shell-mcp-cloudflared 2>&1 || true)"
 else
-    echo "systemd is not running (e.g. inside a container); service was not" >&2
-    echo "started automatically. Run it manually with:" >&2
+    echo "systemd is not running (e.g. inside a container); services were not" >&2
+    echo "started automatically. Run the server manually with:" >&2
     echo "  ${INSTALL_DIR}/${BINARY_NAME} -config ${CONFIG_FILE}" >&2
     STATUS="not started (no systemd)"
+    CF_STATUS="not started (no systemd)"
 fi
 
 TOKEN=""
@@ -112,13 +229,19 @@ if [ -f "$CONFIG_FILE" ]; then
     TOKEN="$(sed -n 's/.*"bearerToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG_FILE")"
 fi
 
+TUNNEL_MODE=""
+if [ -f "$CONFIG_FILE" ]; then
+    TUNNEL_MODE="$("${INSTALL_DIR}/${BINARY_NAME}" config-get -config "$CONFIG_FILE" tunnelMode 2>/dev/null || true)"
+fi
+
 echo ""
 echo "-----------------------------------------------------------"
 echo " unraid-shell-mcp installed."
-echo " Service status: ${STATUS}"
-echo " Config file:    ${CONFIG_FILE}"
+echo " Service status:      ${STATUS}"
+echo " cloudflared status:  ${CF_STATUS} (tunnelMode: ${TUNNEL_MODE:-off})"
+echo " Config file:         ${CONFIG_FILE}"
 if [ -n "$TOKEN" ]; then
-    echo " Bearer token:   ${TOKEN}"
+    echo " Bearer token:        ${TOKEN}"
 fi
 echo ""
 echo " The command whitelist is empty by default, so no commands can run"
@@ -126,8 +249,18 @@ echo " yet. Edit commandWhitelist/commandBlacklist in ${CONFIG_FILE} (regex"
 echo " patterns, one per array entry), then:"
 echo "   systemctl restart unraid-shell-mcp"
 echo ""
+echo " To expose this over Cloudflare instead of just localhost, set"
+echo " tunnelMode to \"quick\" (no account needed) or \"named\" (stable"
+echo " hostname, needs cloudflareTunnelToken from the Zero Trust dashboard)"
+echo " in ${CONFIG_FILE}, then:"
+echo "   systemctl restart unraid-shell-mcp-cloudflared"
+echo "   journalctl -u unraid-shell-mcp-cloudflared -f"
+echo " In quick mode the ephemeral trycloudflare.com URL also gets written"
+echo " to /run/unraid-shell-mcp-cloudflared-url."
+echo ""
 echo " WARNING: this exposes shell access to this machine to anyone holding"
 echo " the bearer token above. See the README's Security section before"
-echo " exposing it beyond localhost."
+echo " exposing it beyond localhost, and put Cloudflare Access in front of"
+echo " any tunnel you enable."
 echo "-----------------------------------------------------------"
 echo ""

@@ -11,6 +11,7 @@ INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 CONFIG_DIR="${CONFIG_DIR:-/etc/unraid-shell-mcp}"
 BINARY_NAME="unraid-shell-mcp"
 SERVICE_FILE="/etc/systemd/system/unraid-shell-mcp.service"
+CLOUDFLARED_SERVICE_FILE="/etc/systemd/system/unraid-shell-mcp-cloudflared.service"
 PURGE=0
 
 for arg in "$@"; do
@@ -27,12 +28,17 @@ fi
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     systemctl disable --now unraid-shell-mcp 2>/dev/null || true
+    systemctl disable --now unraid-shell-mcp-cloudflared 2>/dev/null || true
 fi
 
-rm -f "$SERVICE_FILE"
+rm -f "$SERVICE_FILE" "$CLOUDFLARED_SERVICE_FILE"
 command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] && systemctl daemon-reload || true
 
-rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+rm -f "${INSTALL_DIR}/${BINARY_NAME}" \
+      "${INSTALL_DIR}/unraid-shell-mcp-cloudflared" \
+      "${INSTALL_DIR}/cloudflared" \
+      /var/log/unraid-shell-mcp-cloudflared.log \
+      /run/unraid-shell-mcp-cloudflared-url
 
 if [ "$PURGE" -eq 1 ]; then
     rm -rf "$CONFIG_DIR"
