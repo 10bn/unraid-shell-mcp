@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build statically linked binary + Slackware package
+        run: make -C plugin/package VERSION=${{ steps.version.outputs.version }}
+
+      - name: Verify binary is statically linked
+        run: file plugin/package/root/usr/local/sbin/unraid-shell-mcp | grep "statically linked"
+
+      - name: Generate release .plg with this version's entities
+        run: |
+          mkdir -p release-assets
+          sed -E "s/<!ENTITY version(\s+)\"[^\"]*\">/<!ENTITY version\1\"${{ steps.version.outputs.version }}\">/" \
+            plugin/unraid-shell-mcp.plg > release-assets/unraid-shell-mcp.plg
+
+      - name: Validate .plg XML
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libxml2-utils
+          xmllint --noout release-assets/unraid-shell-mcp.plg
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            plugin/package/out/*.txz \
+            plugin/package/out/*.txz.md5 \
+            release-assets/unraid-shell-mcp.plg \
+            --title "unraid-shell-mcp ${{ steps.version.outputs.version }}" \
+            --generate-notes
+
+      - name: Update plugin descriptor on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          git checkout main
+          sed -E -i "s/<!ENTITY version(\s+)\"[^\"]*\">/<!ENTITY version\1\"${{ steps.version.outputs.version }}\">/" \
+            plugin/unraid-shell-mcp.plg
+          if ! git diff --quiet -- plugin/unraid-shell-mcp.plg; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add plugin/unraid-shell-mcp.plg
+            git commit -m "release: bump unraid-shell-mcp.plg to ${{ steps.version.outputs.version }}"
+            git push origin main
+          else
+            echo "plugin/unraid-shell-mcp.plg already at ${{ steps.version.outputs.version }}; nothing to commit"
+          fi

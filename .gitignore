@@ -1,0 +1,6 @@
+/dist/
+/plugin/package/out/
+/plugin/package/root/usr/
+/plugin/package/root/etc/
+*.txz
+*.txz.md5
