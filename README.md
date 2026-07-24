@@ -171,7 +171,14 @@ choice, and is intentionally not what this project provides.
   rejected, is logged as a structured JSON audit line on stdout.
 - Configuration lives at `/boot/config/plugins/unraid-shell-mcp/config.json`
   (persists across reboots, since Unraid boots from a RAM overlay and only
-  `/boot` is durable). See `config.example.json` for the shape.
+  `/boot` is durable). See `config.example.json` for the shape — it now
+  ships with a curated starting-point whitelist/blacklist (safe, read-only
+  commands like `uptime`, `docker ps`/`logs`/`inspect`, array/disk status,
+  SMART data; explicit denials like `reboot`, `docker rm`/`stop`, `passwd`)
+  to adapt rather than write from scratch. The Settings page has "Load
+  example whitelist"/"Load example blacklist" buttons for the same
+  template, plus inline "?" help throughout explaining each field
+  (including exactly what the hard-coded safety blocklist covers).
 - The MCP library's loopback DNS-rebinding protection (rejecting requests
   whose `Host` header isn't a localhost value) is disabled: cloudflared
   forwards tunneled requests to our `127.0.0.1` listener while preserving the
