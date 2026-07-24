@@ -93,16 +93,25 @@ $whitelistText    = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []
 $blacklistText    = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
 $allowAllCommands = !empty($cfg['allowAllCommands']);
 $tunnelMode       = $cfg['tunnelMode'] ?? 'off';
+$cfToken          = $cfg['cloudflareTunnelToken'] ?? '';
+$cfHostname       = $cfg['cloudflareTunnelHostname'] ?? '';
+$bearerToken      = $cfg['bearerToken'] ?? '';
+
+// Managed ("named") mode never writes urlFile — cloudflared learns its
+// ingress/hostname entirely from the dashboard-issued token, so the rc.d
+// script has nothing to write there. Fall back to the hostname the operator
+// entered here (display-only; it isn't otherwise used for that mode) so the
+// composed MCP URL below still reflects the actual public endpoint instead
+// of always showing the internal listenAddr for anyone using managed mode.
+if ($publicUrl === "" && $tunnelMode === 'named' && $cfHostname !== "") {
+    $publicUrl = "https://" . $cfHostname;
+}
 
 // A single ready-to-paste URL for MCP clients that only accept a URL and
 // have no way to configure a custom Authorization header: the bearer token
 // travels in the path instead of a header (see internal/auth.PathTokenMiddleware).
 $mcpBaseUrl = $publicUrl !== "" ? rtrim($publicUrl, "/") : "http://" . ($cfg['listenAddr'] ?? "127.0.0.1:8483");
 $fullMcpUrl = ($cfg !== null && !empty($cfg['bearerToken'])) ? $mcpBaseUrl . "/mcp/" . $cfg['bearerToken'] : "";
-
-$cfToken          = $cfg['cloudflareTunnelToken'] ?? '';
-$cfHostname       = $cfg['cloudflareTunnelHostname'] ?? '';
-$bearerToken      = $cfg['bearerToken'] ?? '';
 
 // Presentation-only: which badge color the Status card shows. Matched
 // against the literal phrase rc.d's status() function prints — "is not
@@ -425,36 +434,74 @@ textarea.usm-list {
         <h3>Remote access</h3>
     </div>
     <p>Tunnel mode:
-        <select name="tunnelMode">
+        <select name="tunnelMode" id="usmTunnelMode" onchange="usmUpdateTunnelFields()">
             <option value="off" <?= $tunnelMode === 'off' ? 'selected' : '' ?>>Off</option>
             <option value="quick" <?= $tunnelMode === 'quick' ? 'selected' : '' ?>>Quick tunnel (ephemeral trycloudflare.com URL, no account needed)</option>
             <option value="local" <?= $tunnelMode === 'local' ? 'selected' : '' ?>>Authorized tunnel (stable hostname &mdash; click a link to authorize with your Cloudflare account, no dashboard setup needed)</option>
             <option value="named" <?= $tunnelMode === 'named' ? 'selected' : '' ?>>Managed tunnel (stable hostname &mdash; paste a token you created yourself in the Cloudflare Zero Trust dashboard)</option>
         </select>
     </p>
-    <p><em>"Authorized" and "Managed" both give a stable hostname instead of a random one that
-       changes on every restart; the difference is only how the tunnel gets set up. Authorized
-       mode does that setup itself &mdash; enter the hostname below, save, click the authorization
-       link that appears once you start the tunnel, and approve it in your Cloudflare account,
-       once. Managed mode expects you to have already created the tunnel yourself in Cloudflare's
-       dashboard and pasted its token below; the tunnel's routing then lives in Cloudflare's cloud
-       instead of on this NAS.</em></p>
-    <p>Hostname (authorized or managed mode):<br>
-        <input type="text" name="cloudflareTunnelHostname" value="<?= htmlspecialchars($cfHostname) ?>" style="width:100%;max-width:640px;font-family:monospace" placeholder="mcp.example.com">
-    </p>
-    <p>Cloudflare tunnel token (Zero Trust dashboard, managed mode only):<br>
-        <input type="password" name="cloudflareTunnelToken" value="<?= htmlspecialchars($cfToken) ?>" style="width:100%;max-width:640px;font-family:monospace">
-    </p>
-    <?php if ($tunnelMode === 'local'): ?>
-    <p><em>Authorized mode remembers your Cloudflare authorization and the tunnel it creates
-       across reboots (stored under this plugin's own config directory on <code>/boot</code>).
-       If you ever want to fully start over &mdash; a different Cloudflare account, for example
-       &mdash; stop the tunnel and delete
-       <code>/boot/config/plugins/unraid-shell-mcp/cloudflared/</code> first.</em></p>
-    <?php endif; ?>
+
+    <div data-usm-modes="local">
+        <p><em>Enter the hostname you want below, save, then start the tunnel &mdash; an
+           "Authorize with Cloudflare" link will appear above in the Status section once
+           cloudflared is ready for it (this can take a few seconds; the page refreshes itself
+           while it waits). Click it, approve in your Cloudflare account, and the tunnel finishes
+           setting itself up automatically. That authorization and the tunnel it creates are
+           remembered across reboots. To fully start over (e.g. a different Cloudflare account),
+           stop the tunnel and delete
+           <code>/boot/config/plugins/unraid-shell-mcp/cloudflared/</code> first.</em></p>
+    </div>
+    <div data-usm-modes="named">
+        <p><em>Create the tunnel yourself first in the
+           <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Zero Trust dashboard</a>,
+           then paste its token below. The hostname field is for display only here (so the
+           Public URL above shows something useful) &mdash; the actual routing lives in
+           Cloudflare's dashboard, not on this NAS.</em></p>
+    </div>
+
+    <div data-usm-modes="local named">
+        <p>Hostname &mdash; the <strong>full</strong> hostname you'll actually connect to, subdomain
+           and root domain together (e.g. <code>mcp.example.com</code>, not just <code>mcp</code>),
+           on a domain already using Cloudflare for its DNS:<br>
+            <input type="text" name="cloudflareTunnelHostname" value="<?= htmlspecialchars($cfHostname) ?>" style="width:100%;max-width:640px;font-family:monospace" placeholder="mcp.example.com">
+        </p>
+    </div>
+    <div data-usm-modes="named">
+        <p>Cloudflare tunnel token (Zero Trust dashboard):<br>
+            <input type="password" name="cloudflareTunnelToken" value="<?= htmlspecialchars($cfToken) ?>" style="width:100%;max-width:640px;font-family:monospace">
+        </p>
+    </div>
 </div>
 
 <button type="submit" class="usm-btn usm-btn-primary">Save settings</button>
 </form>
+
+<script>
+function usmUpdateTunnelFields() {
+    var mode = document.getElementById('usmTunnelMode').value;
+    document.querySelectorAll('[data-usm-modes]').forEach(function (el) {
+        var modes = el.getAttribute('data-usm-modes').split(' ');
+        el.style.display = modes.indexOf(mode) !== -1 ? '' : 'none';
+    });
+}
+usmUpdateTunnelFields();
+</script>
+
+<?php
+// While an authorized-mode tunnel has just been started but cloudflared
+// hasn't printed its one-time authorization URL yet (takes it a few
+// seconds), auto-refresh a handful of times so the link in the Status
+// section above appears on its own instead of requiring a manual reload.
+// Bounded via a query-string counter so this can never loop forever if
+// something's actually stuck rather than just still starting up.
+if ($tunnelMode === 'local' && $loginUrl === '' && !$cfRunning) {
+    $usmWait = isset($_GET['_usmwait']) ? (int) $_GET['_usmwait'] : 0;
+    if ($usmWait < 6) {
+        $usmNextWait = $usmWait + 1;
+        echo "<script>setTimeout(function(){ var u = new URL(location.href); u.searchParams.set('_usmwait', '$usmNextWait'); location.href = u.toString(); }, 2000);</" . "script>";
+    }
+}
+?>
 
 <?php endif; ?>
