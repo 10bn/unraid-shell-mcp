@@ -28,12 +28,19 @@ installing this.
 4. Go to **Settings → Unraid Shell MCP** to view/rotate the bearer token,
    configure the command whitelist/blacklist, and (optionally) enable a
    Cloudflare tunnel for remote access.
-5. Point your MCP client at `http://<unraid-ip>:8483/mcp` (or your tunnel
-   hostname) with header `Authorization: Bearer <token>`. If your client has
-   no way to set a custom header, use `.../mcp/<token>` instead (same
-   token, embedded in the URL) and select "no authentication" — the
-   Settings page shows this exact URL ready to copy. See "Two ways to
-   authenticate" below.
+5. Point your MCP client at the server with header
+   `Authorization: Bearer <token>`. Note the server listens on
+   `127.0.0.1:8483` by default — reachable from the Unraid box itself and
+   through the tunnel, but *not* from other machines on your LAN. For
+   remote clients, use one of the Cloudflare tunnel modes (recommended);
+   for direct LAN access instead, change `listenAddr` to `0.0.0.0:8483` in
+   `config.json` and restart the server, then use
+   `http://<unraid-ip>:8483/mcp`. If your client has no way to set a
+   custom header, use `.../mcp/<token>` instead (same token, embedded in
+   the URL) and select "no authentication" — the Settings page shows this
+   exact URL ready to copy. See "Two ways to authenticate" below.
+6. Both the MCP server and (if configured) the tunnel start automatically
+   when the array comes up after a reboot — no manual start needed.
 
 ## Two ways to authenticate
 
@@ -177,9 +184,8 @@ choice, and is intentionally not what this project provides.
   SMART data; explicit denials like `reboot`, `docker rm`/`stop`, `passwd`)
   to adapt rather than write from scratch. The Settings page has "Load
   example whitelist"/"Load example blacklist" buttons for the same
-  template, plus inline help throughout explaining each field (including
-  exactly what the hard-coded safety blocklist covers) via Unraid's own
-  built-in per-field help icon, not a custom one.
+  template, plus explanatory text alongside every field (including exactly
+  what the hard-coded safety blocklist covers).
 - The MCP library's loopback DNS-rebinding protection (rejecting requests
   whose `Host` header isn't a localhost value) is disabled: cloudflared
   forwards tunneled requests to our `127.0.0.1` listener while preserving the
@@ -206,6 +212,13 @@ choice, and is intentionally not what this project provides.
   and forgotten) specifically so `stop()` can reliably kill whichever one
   is currently in flight — including a `tunnel login` that's still waiting
   on a human — instead of leaving it to run to completion as an orphan.
+- **Boot-time autostart**: `plugin/event/started` is installed into the
+  plugin's `event/` directory, which Unraid's `emhttp_event` runs
+  automatically once the array has finished starting (every boot, and
+  after any manual array stop/start). It just calls both rc.d scripts'
+  `start` — each safely no-ops if already running, and the tunnel one
+  no-ops when `tunnelMode` is `off` — so the MCP server and tunnel come
+  back up on their own after a reboot.
 
 ## Repository layout
 
@@ -219,8 +232,10 @@ plugin/
   unraid-shell-mcp.plg    Unraid plugin descriptor (install/remove logic)
   package/                Slackware package skeleton + Makefile (makepkg)
   rc.d/                   rc.unraid-shell-mcp, rc.unraid-shell-mcp-cloudflared
+  event/started           boot-time autostart hook, run by emhttp_event
 webgui/UnraidShellMcp.page  Settings page (token, whitelist, tunnel, status)
-.github/workflows/release.yml  builds + publishes the .txz/.plg on tag push
+.github/workflows/release.yml  builds + publishes the .txz/.plg (tag push
+                          or manual workflow_dispatch with a version input)
 config.example.json
 ```
 
@@ -253,36 +268,46 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
 
 ## Known limitations
 
-- **`.txz` packaging has not been verified on a real Slackware/Unraid host
-  or `makepkg`.** No Unraid host or Slackware environment was available to
-  test against; the fallback tar+xz packaging was checked by hand-extracting
-  the resulting archive and confirming the expected file tree, permissions,
-  and a statically linked binary, and by comparing the `.plg` structure
-  against a real published plugin
-  ([NerdPack.plg](https://raw.githubusercontent.com/dmacias72/unRAID-plugins/master/plugins/NerdPack.plg)).
-  It has not been installed on an actual Unraid boot device.
-- **cloudflared itself has not been exercised end-to-end by this project's own
-  development environment** (its sandboxed network policy blocks fetching the
-  `cloudflared` binary directly, and blocks reaching `*.trycloudflare.com` or
-  Cloudflare's own dashboard to test a live tunnel or a real account
-  authorization). The quick/named/authorized-mode logic in
-  `rc.unraid-shell-mcp-cloudflared` — mode switching, URL-file writing, clean
-  process teardown, no leaked child processes — was verified against a fake
-  `cloudflared` binary that reproduces the real CLI output format, and the
-  loopback-Host-header interaction with a real tunnel was diagnosed and
-  fixed based on a live user report, but end-to-end tunnel behavior has not
-  been directly exercised from this sandbox. This applies especially to
-  authorized (`local`) mode: the full `tunnel login` → `tunnel create` →
-  `tunnel route dns` → `tunnel run` sequence, its handling of stopping
-  mid-authorization (verified it no longer leaks an orphaned `tunnel login`
-  process — a real bug this exact testing caught and fixed), and the
-  tunnel-id extraction (diffing `*.json` credential files rather than
-  parsing `tunnel create`'s stdout, specifically to avoid depending on an
-  exact text format) were all verified against the fake binary, but the
-  precise flags/output cloudflared's real CLI uses were not independently
-  confirmed against the genuine binary or a real Cloudflare account.
+- **The `makepkg`-proper packaging path is untested — but the fallback
+  tar+xz path is the one actually proven in production.** The GitHub
+  Actions runner that builds releases has no `makepkg`, so every published
+  `.txz` comes from the Makefile's tar+xz fallback — and those packages
+  have since been installed and upgraded repeatedly on a real Unraid
+  7.3.2 server via the normal plugin manager (`upgradepkg`), working as
+  intended. The inverse remains untested: building with real Slackware
+  `makepkg` has never been exercised, since no build host with it has
+  been available.
+- **cloudflared behavior was originally developed against a fake binary,
+  and one real-CLI difference slipped through exactly as that limitation
+  warned.** This project's sandboxed development environment can't reach
+  Cloudflare, so the quick/named/authorized-mode logic in
+  `rc.unraid-shell-mcp-cloudflared` — mode switching, URL-file writing,
+  clean process teardown, no leaked child processes, tunnel-id extraction —
+  was verified against a fake `cloudflared` that reproduces the real CLI's
+  output format. The fake couldn't catch flag-parsing differences: the
+  real CLI rejects `--config` placed after the `run` subcommand, which
+  made authorized mode exit instantly on every start until it was
+  diagnosed on a live server and fixed (v0.1.11). Since then, authorized
+  (`local`) mode **has** been verified end-to-end against a real Unraid
+  7.3.2 server, real cloudflared, and a real Cloudflare account — login →
+  create → route dns → run, through to a working public hostname — and
+  the loopback-Host-header 403 interaction was likewise diagnosed and
+  fixed against a live tunnel. Quick and named modes have been run
+  against real tunnels too, but are not systematically re-verified on
+  every change; the fake-binary suite remains the pre-release check.
 - No Unraid Community Applications submission — install via the raw `.plg`
   URL above only.
+- **Unraid's plugin manager compares versions with PHP's `strcmp`, not
+  numerically.** A plain lexicographic comparison considers `0.1.10` to be
+  *older* than `0.1.9` (because the character `1` sorts before `9`), so
+  updating across such a boundary is silently skipped with "not installing
+  older version". This actually happened for the 0.1.9 → 0.1.10/0.1.11
+  updates. Workaround when it bites: install with the `forced` flag from a
+  terminal — `plugin install <plg-url> forced`. The next digit-count
+  boundaries with this scheme would be 0.1.99 → 0.1.100 and 0.9.x →
+  0.10.x; switching to date-based versions (`YYYY.MM.DD`, the common
+  Unraid-plugin convention, which is strcmp-safe) would avoid the problem
+  permanently and is under consideration.
 - **`cloudflared` is fetched over HTTPS from GitHub's "latest" release URL
   with no checksum or signature pinned in the `.plg` installer**, unlike
   this project's own `.txz` (which is md5-verified before `upgradepkg` ever

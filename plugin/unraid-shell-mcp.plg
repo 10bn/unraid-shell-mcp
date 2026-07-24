@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.11">
+<!ENTITY version     "0.1.12">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,24 @@
 
 <CHANGES>
 ##&name;
+###0.1.12
+- Docs/UI accuracy pass, no behavior changes to the server or tunnel:
+  the Settings page and README both wrongly said the MCP server is
+  reachable "on your LAN" with the tunnel off — it listens on 127.0.0.1
+  by default, so it's only reachable from the Unraid box itself (or
+  through a tunnel) unless you change listenAddr yourself; both now say
+  so, and explain how. Also fixed the self-contradictory "All four run
+  cloudflared (except Off)" wording, removed the README's stale claim
+  that the Settings page uses Unraid's built-in per-field help icons
+  (that approach was reverted in 0.1.10), refreshed the README's "Known
+  limitations" to reflect that packaging and the authorized tunnel mode
+  have since been verified on a real Unraid 7.3.2 server, and documented
+  Unraid plugin manager's strcmp version comparison (why the 0.1.9 →
+  0.1.10/0.1.11 update was silently skipped, and the `plugin install
+  &lt;url&gt; forced` workaround).
+- The MCP server now reports its real release version to MCP clients and
+  in its startup log line (it previously always claimed "0.1.0"
+  regardless of the installed version).
 ###0.1.11
 - Fix: authorized-tunnel mode ("local") exited immediately every time it
   was started, because the final `cloudflared tunnel run` invocation

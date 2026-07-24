@@ -84,8 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $cfg !== null) {
     $cfg = usm_load_config($cfgFile);
 }
 
-$mcpStatus = $cfg !== null ? trim(shell_exec(escapeshellarg($rcMcp) . ' status 2>&1')) : "not configured";
-$cfStatus  = $cfg !== null ? trim(shell_exec(escapeshellarg($rcCf) . ' status 2>&1')) : "not configured";
+$mcpStatus = $cfg !== null ? trim((string)shell_exec(escapeshellarg($rcMcp) . ' status 2>&1')) : "not configured";
+$cfStatus  = $cfg !== null ? trim((string)shell_exec(escapeshellarg($rcCf) . ' status 2>&1')) : "not configured";
 $publicUrl = file_exists($urlFile) ? trim(file_get_contents($urlFile)) : "";
 $loginUrl  = file_exists($loginUrlFile) ? trim(file_get_contents($loginUrlFile)) : "";
 
@@ -521,9 +521,13 @@ textarea.usm-list {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3a7 7 0 0 0-7 7c0 4 3 6 7 11 4-5 7-7 7-11a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="10" r="2.4" stroke="currentColor" stroke-width="2"/></svg>
         <h3>Remote access</h3>
     </div>
-    <p>All four run <code>cloudflared</code> to get a public HTTPS URL without opening a port on
-       your router (except Off, which stays LAN-only). <strong>Off</strong> means the server is
-       only reachable on your LAN at <code>http://&lt;unraid-ip&gt;:8483</code>.
+    <p><strong>Off</strong> runs no tunnel at all. The MCP server listens on
+       <code>127.0.0.1:8483</code> by default, so with the tunnel off it's only reachable from
+       this machine itself &mdash; not from other devices on your LAN &mdash; unless you change
+       <code>listenAddr</code> (e.g. to <code>0.0.0.0:8483</code>) in
+       <code>/boot/config/plugins/unraid-shell-mcp/config.json</code> and restart the server.
+       The other three modes run <code>cloudflared</code> to get a public HTTPS URL without
+       opening a port on your router.
        <strong>Quick</strong> needs no Cloudflare account but the hostname is random and changes
        every restart &mdash; fine for a quick test, not for a client you'll reconnect to later.
        <strong>Authorized</strong> and <strong>Managed</strong> both give a stable hostname you
