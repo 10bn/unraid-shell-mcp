@@ -30,7 +30,11 @@ generic Linux box. Read the "Security" section below before installing this.
    configure the command whitelist/blacklist, and (optionally) enable a
    Cloudflare tunnel for remote access.
 5. Point your MCP client at `http://<unraid-ip>:8483/mcp` (or your tunnel
-   hostname) with header `Authorization: Bearer <token>`.
+   hostname) with header `Authorization: Bearer <token>`. If your client has
+   no way to set a custom header, use `.../mcp/<token>` instead (same
+   token, embedded in the URL) and select "no authentication" — the
+   Settings page shows this exact URL ready to copy. See "Two ways to
+   authenticate" below.
 
 ## Install on generic Linux (systemd)
 
@@ -117,6 +121,26 @@ sudo journalctl -u unraid-shell-mcp-cloudflared -f  # watch it come up
   dashboard) and `cloudflareTunnelHostname` in config.json first — this gets
   you a stable hostname instead of a random one.
 
+## Two ways to authenticate
+
+Every request needs the bearer token one way or another; there's no
+"unauthenticated" mode. Which of these two you use is just a matter of what
+your MCP client's UI can configure:
+
+- **Header (preferred when your client supports it):** point the client at
+  `.../mcp` and set `Authorization: Bearer <token>`.
+- **URL-embedded token:** point the client at `.../mcp/<token>` instead and
+  select "no authentication" (or leave auth unconfigured) — the token
+  travels in the path rather than a header, for clients whose UI only
+  accepts a URL with no way to add a custom header. It's the exact same
+  secret either way, just carried differently; the Settings page (Unraid)
+  shows this full URL pre-composed with the tunnel hostname and token
+  already filled in, ready to paste.
+
+The tradeoff: URLs are more likely than headers to end up somewhere you
+didn't intend — browser history, a reverse proxy's access log, a screenshot.
+Prefer the header form when you can; use the URL form when you can't.
+
 ## Security
 
 **Whoever holds the bearer token gets full shell access to this machine** —
@@ -188,8 +212,12 @@ choice, and is intentionally not what this project provides.
 - A single statically linked Go binary (`unraid-shell-mcp`) runs an MCP
   server over Streamable HTTP at `/mcp`, using
   [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go).
-- A `net/http` middleware checks `Authorization: Bearer <token>` on every
-  request before it reaches the MCP handler.
+- Two ways to authenticate, both checking the same token, either works: a
+  `net/http` middleware on `/mcp` requires `Authorization: Bearer <token>`;
+  a second one on `/mcp/<token>` reads the token from the URL path itself,
+  for MCP clients whose UI only accepts a URL with no way to set a custom
+  header. Pick whichever your client supports — see "Two ways to
+  authenticate" below for the tradeoff.
 - The one MCP tool, `execute-command`, runs `/bin/sh -c <command>` after
   checking the command against the hard blocklist, then the configured
   blacklist (both substring/"appears anywhere" matches), then the configured

@@ -91,6 +91,13 @@ $whitelistText    = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []
 $blacklistText    = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
 $allowAllCommands = !empty($cfg['allowAllCommands']);
 $tunnelMode       = $cfg['tunnelMode'] ?? 'off';
+
+// A single ready-to-paste URL for MCP clients that only accept a URL and
+// have no way to configure a custom Authorization header: the bearer token
+// travels in the path instead of a header (see internal/auth.PathTokenMiddleware).
+$mcpBaseUrl = $publicUrl !== "" ? rtrim($publicUrl, "/") : "http://" . ($cfg['listenAddr'] ?? "127.0.0.1:8483");
+$fullMcpUrl = ($cfg !== null && !empty($cfg['bearerToken'])) ? $mcpBaseUrl . "/mcp/" . $cfg['bearerToken'] : "";
+
 $cfToken          = $cfg['cloudflareTunnelToken'] ?? '';
 $cfHostname       = $cfg['cloudflareTunnelHostname'] ?? '';
 $bearerToken      = $cfg['bearerToken'] ?? '';
@@ -127,6 +134,7 @@ textarea.usm-list {
 .usm-token {
     font-family: monospace;
     background: #f5f5f5;
+    color: #212529;
     padding: 4px 8px;
     border-radius: 4px;
     word-break: break-all;
@@ -194,6 +202,18 @@ textarea.usm-list {
     <h3>Bearer token</h3>
     <p>Present this as <code>Authorization: Bearer &lt;token&gt;</code> on every MCP request.</p>
     <p class="usm-token"><?= htmlspecialchars($bearerToken) ?></p>
+
+    <p>If your MCP client only accepts a URL and has no way to set a custom
+       header, select "No authentication" there and paste this instead
+       &mdash; the token is embedded in the URL itself, so it needs nothing
+       extra configured on the client side:</p>
+    <p class="usm-token"><?= htmlspecialchars($fullMcpUrl) ?></p>
+    <p><em>Anyone with this URL has the same access as anyone with the bearer
+       token above &mdash; it's the same secret, just carried in the path
+       instead of a header. URLs are more likely than headers to end up in
+       browser history or proxy access logs, so prefer the header form
+       (<code>Authorization: Bearer</code>) when your client supports it.</em></p>
+
     <form method="post" onsubmit="return confirm('Rotate the bearer token? Existing MCP clients will need the new token.');">
         <input type="hidden" name="action" value="rotate_token">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">

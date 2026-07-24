@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.1">
+<!ENTITY version     "0.1.2">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,14 @@
 
 <CHANGES>
 ##&name;
+###0.1.2
+- Fix: the bearer token on the Settings page was invisible (light text on a
+  light background, unreadable in Unraid's dark theme) — not missing, just
+  unreadable.
+- Add a second, URL-embedded way to authenticate MCP requests
+  (.../mcp/TOKEN, no header needed) for clients whose UI only accepts a
+  URL. The Settings page now shows this exact URL, pre-composed with the
+  active tunnel hostname and token, ready to paste.
 ###0.1.1
 - Fix: Settings page forms were missing the webGUI's csrf_token, causing
   Unraid to silently reject every Save/Start/Stop/Rotate submission (blank
