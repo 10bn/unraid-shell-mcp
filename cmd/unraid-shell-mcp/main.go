@@ -87,6 +87,10 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", auth.Middleware(cfg.BearerToken, streamable))
+	// Alternate auth path for MCP clients that only accept a URL, with no
+	// way to configure a custom Authorization header: the same bearer
+	// token, embedded in the URL itself instead of a header.
+	mux.Handle("/mcp/{token}", auth.PathTokenMiddleware(cfg.BearerToken, streamable))
 
 	log.Printf("unraid-shell-mcp listening on %s", cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {

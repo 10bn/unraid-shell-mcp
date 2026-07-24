@@ -389,6 +389,15 @@ if [ -f "$CONFIG_FILE" ] && ! grep -q '"commandWhitelist": \[\]' "$CONFIG_FILE";
     WHITELIST_EMPTY=0
 fi
 
+# Same URL-embedded-token convenience the Unraid webGUI shows, for MCP
+# clients that only accept a URL and can't set a custom Authorization header.
+MCP_BASE_URL=""
+if [ -f "/run/unraid-shell-mcp-cloudflared-url" ]; then
+    MCP_BASE_URL="$(cat /run/unraid-shell-mcp-cloudflared-url)"
+elif [ -f "$CONFIG_FILE" ]; then
+    MCP_BASE_URL="http://$("${INSTALL_DIR}/${BINARY_NAME}" config-get -config "$CONFIG_FILE" listenAddr 2>/dev/null || echo "127.0.0.1:8483")"
+fi
+
 echo ""
 echo "-----------------------------------------------------------"
 echo " unraid-shell-mcp installed."
@@ -397,7 +406,13 @@ echo " cloudflared status:  ${CF_STATUS} (tunnelMode: ${TUNNEL_MODE:-off})"
 echo " Config file:         ${CONFIG_FILE}"
 if [ -n "$TOKEN" ]; then
     echo " Bearer token:        ${TOKEN}"
+    echo " Full URL (no header needed): ${MCP_BASE_URL}/mcp/${TOKEN}"
 fi
+echo ""
+echo " Two ways to authenticate an MCP client, same token either way:"
+echo "   - header: point it at ${MCP_BASE_URL}/mcp with Authorization: Bearer <token>"
+echo "   - URL only (no header support needed): use the full URL above and"
+echo "     select \"no authentication\" in the client"
 echo ""
 if [ "$WHITELIST_EMPTY" -eq 1 ]; then
     echo " The command whitelist is empty, so no commands can run yet. Edit"
