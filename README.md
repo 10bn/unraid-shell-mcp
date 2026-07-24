@@ -251,7 +251,7 @@ go test ./...
 To build the Slackware `.txz` package used by the plugin installer:
 
 ```sh
-make -C plugin/package VERSION=0.1.0
+make -C plugin/package VERSION=2026.07.24
 ```
 
 This uses the real `makepkg` (part of Slackware's `pkgtools`) when available.
@@ -301,13 +301,15 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
   numerically.** A plain lexicographic comparison considers `0.1.10` to be
   *older* than `0.1.9` (because the character `1` sorts before `9`), so
   updating across such a boundary is silently skipped with "not installing
-  older version". This actually happened for the 0.1.9 → 0.1.10/0.1.11
-  updates. Workaround when it bites: install with the `forced` flag from a
-  terminal — `plugin install <plg-url> forced`. The next digit-count
-  boundaries with this scheme would be 0.1.99 → 0.1.100 and 0.9.x →
-  0.10.x; switching to date-based versions (`YYYY.MM.DD`, the common
-  Unraid-plugin convention, which is strcmp-safe) would avoid the problem
-  permanently and is under consideration.
+  older version" — which actually happened for this plugin's 0.1.9 →
+  0.1.10/0.1.11 updates. This project therefore switched to date-based
+  versions (`YYYY.MM.DD`, plus an `a`/`b`/… suffix for a second release on
+  the same day — the common Unraid-plugin convention) as of `2026.07.24`,
+  which strcmp orders correctly, permanently. Every date version also
+  sorts above every old `0.1.x` version, so updating from any earlier
+  release works through the normal update path. If you're ever bitten by
+  the quirk on some other plugin: `plugin install <plg-url> forced` from a
+  terminal bypasses the version check.
 - **`cloudflared` is fetched over HTTPS from GitHub's "latest" release URL
   with no checksum or signature pinned in the `.plg` installer**, unlike
   this project's own `.txz` (which is md5-verified before `upgradepkg` ever

@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.12">
+<!ENTITY version     "2026.07.24">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,15 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24
+- Switch to date-based versioning (YYYY.MM.DD, with an a/b/... suffix if
+  there's ever a second release on the same day). Unraid's plugin manager
+  compares versions as plain strings, which silently skipped the
+  0.1.9 &#8594; 0.1.10 update under the old numeric scheme; date versions
+  always compare correctly. Every date version also sorts above every old
+  0.1.x version, so updating from any previous release — including anyone
+  still stuck on 0.1.9 — works through the normal update path again, no
+  forced install needed.
 ###0.1.12
 - Docs/UI accuracy pass, no behavior changes to the server or tunnel:
   the Settings page and README both wrongly said the MCP server is
