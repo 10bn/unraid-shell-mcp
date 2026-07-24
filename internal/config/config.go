@@ -24,6 +24,15 @@ const (
 	TunnelModeOff   TunnelMode = "off"
 	TunnelModeQuick TunnelMode = "quick"
 	TunnelModeNamed TunnelMode = "named"
+	// TunnelModeLocal is a "locally-managed tunnel" in Cloudflare's own
+	// terminology: no token is pasted from the dashboard. Instead
+	// rc.unraid-shell-mcp-cloudflared runs `cloudflared tunnel login`
+	// itself, surfaces the one-time authorization URL it prints for the
+	// Settings page to show as a clickable link, and once that completes
+	// (cert.pem appears) creates the tunnel, routes cloudflareTunnelHostname
+	// to it, and runs it — all driven by CloudflareTunnelHostname, the same
+	// field TunnelModeNamed uses, with no separate token needed.
+	TunnelModeLocal TunnelMode = "local"
 )
 
 // Config is the on-disk shape of config.json.

@@ -5,10 +5,11 @@ Icon="terminal"
 <?PHP
 /* Copyright 2026, 10bn. Settings page for the unraid-shell-mcp plugin. */
 
-$cfgFile = "/boot/config/plugins/unraid-shell-mcp/config.json";
-$rcMcp   = "/etc/rc.d/rc.unraid-shell-mcp";
-$rcCf    = "/etc/rc.d/rc.unraid-shell-mcp-cloudflared";
-$urlFile = "/var/run/unraid-shell-mcp-cloudflared-url.txt";
+$cfgFile      = "/boot/config/plugins/unraid-shell-mcp/config.json";
+$rcMcp        = "/etc/rc.d/rc.unraid-shell-mcp";
+$rcCf         = "/etc/rc.d/rc.unraid-shell-mcp-cloudflared";
+$urlFile      = "/var/run/unraid-shell-mcp-cloudflared-url.txt";
+$loginUrlFile = "/var/run/unraid-shell-mcp-cloudflared-login-url.txt";
 
 function usm_load_config($path) {
     if (!file_exists($path)) {
@@ -54,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $cfg !== null) {
         $cfg['commandBlacklist'] = usm_lines_to_list($_POST['commandBlacklist'] ?? '');
         $cfg['allowAllCommands'] = isset($_POST['allowAllCommands']);
         $tunnelMode = $_POST['tunnelMode'] ?? 'off';
-        $cfg['tunnelMode'] = in_array($tunnelMode, ['off', 'quick', 'named'], true) ? $tunnelMode : 'off';
+        $cfg['tunnelMode'] = in_array($tunnelMode, ['off', 'quick', 'named', 'local'], true) ? $tunnelMode : 'off';
         $cfg['cloudflareTunnelToken'] = trim($_POST['cloudflareTunnelToken'] ?? '');
         $cfg['cloudflareTunnelHostname'] = trim($_POST['cloudflareTunnelHostname'] ?? '');
         usm_save_config($cfgFile, $cfg);
@@ -86,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $cfg !== null) {
 $mcpStatus = $cfg !== null ? trim(shell_exec(escapeshellarg($rcMcp) . ' status 2>&1')) : "not configured";
 $cfStatus  = $cfg !== null ? trim(shell_exec(escapeshellarg($rcCf) . ' status 2>&1')) : "not configured";
 $publicUrl = file_exists($urlFile) ? trim(file_get_contents($urlFile)) : "";
+$loginUrl  = file_exists($loginUrlFile) ? trim(file_get_contents($loginUrlFile)) : "";
 
 $whitelistText    = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []) : "";
 $blacklistText    = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
@@ -148,6 +150,15 @@ $cfRunning  = strpos($cfStatus, ' is running') !== false;
     padding: 8px 14px;
     margin-bottom: 16px;
     border-radius: 6px;
+}
+.usm-authorize-box {
+    margin-top: 10px;
+    margin-bottom: 4px;
+}
+.usm-authorize-box .usm-btn {
+    display: inline-block;
+    margin: 8px 0;
+    text-decoration: none;
 }
 .usm-card {
     border: 1px solid var(--usm-card-border);
@@ -307,6 +318,16 @@ textarea.usm-list {
     </div>
     <?php endif; ?>
 
+    <?php if ($loginUrl): ?>
+    <div class="usm-notice usm-authorize-box">
+        <strong>Action needed:</strong> authorize this tunnel with your Cloudflare account to finish setting it up.
+        <a class="usm-btn usm-btn-primary" href="<?= htmlspecialchars($loginUrl) ?>" target="_blank" rel="noopener">Authorize with Cloudflare &rarr;</a>
+        <br>Opens Cloudflare's own login page in a new tab &mdash; any device's browser works, it
+        doesn't have to be one that can reach this NAS. Once you approve it there, this page will
+        pick up automatically; no need to come back and click anything else here.
+    </div>
+    <?php endif; ?>
+
     <div class="usm-btn-row">
         <form method="post">
             <input type="hidden" name="action" value="start_mcp">
@@ -407,15 +428,30 @@ textarea.usm-list {
         <select name="tunnelMode">
             <option value="off" <?= $tunnelMode === 'off' ? 'selected' : '' ?>>Off</option>
             <option value="quick" <?= $tunnelMode === 'quick' ? 'selected' : '' ?>>Quick tunnel (ephemeral trycloudflare.com URL, no account needed)</option>
-            <option value="named" <?= $tunnelMode === 'named' ? 'selected' : '' ?>>Named tunnel (stable hostname via Cloudflare Zero Trust)</option>
+            <option value="local" <?= $tunnelMode === 'local' ? 'selected' : '' ?>>Authorized tunnel (stable hostname &mdash; click a link to authorize with your Cloudflare account, no dashboard setup needed)</option>
+            <option value="named" <?= $tunnelMode === 'named' ? 'selected' : '' ?>>Managed tunnel (stable hostname &mdash; paste a token you created yourself in the Cloudflare Zero Trust dashboard)</option>
         </select>
     </p>
-    <p>Cloudflare tunnel token (Zero Trust dashboard, named mode only):<br>
-        <input type="password" name="cloudflareTunnelToken" value="<?= htmlspecialchars($cfToken) ?>" style="width:100%;max-width:640px;font-family:monospace">
-    </p>
-    <p>Cloudflare tunnel hostname (named mode only):<br>
+    <p><em>"Authorized" and "Managed" both give a stable hostname instead of a random one that
+       changes on every restart; the difference is only how the tunnel gets set up. Authorized
+       mode does that setup itself &mdash; enter the hostname below, save, click the authorization
+       link that appears once you start the tunnel, and approve it in your Cloudflare account,
+       once. Managed mode expects you to have already created the tunnel yourself in Cloudflare's
+       dashboard and pasted its token below; the tunnel's routing then lives in Cloudflare's cloud
+       instead of on this NAS.</em></p>
+    <p>Hostname (authorized or managed mode):<br>
         <input type="text" name="cloudflareTunnelHostname" value="<?= htmlspecialchars($cfHostname) ?>" style="width:100%;max-width:640px;font-family:monospace" placeholder="mcp.example.com">
     </p>
+    <p>Cloudflare tunnel token (Zero Trust dashboard, managed mode only):<br>
+        <input type="password" name="cloudflareTunnelToken" value="<?= htmlspecialchars($cfToken) ?>" style="width:100%;max-width:640px;font-family:monospace">
+    </p>
+    <?php if ($tunnelMode === 'local'): ?>
+    <p><em>Authorized mode remembers your Cloudflare authorization and the tunnel it creates
+       across reboots (stored under this plugin's own config directory on <code>/boot</code>).
+       If you ever want to fully start over &mdash; a different Cloudflare account, for example
+       &mdash; stop the tunnel and delete
+       <code>/boot/config/plugins/unraid-shell-mcp/cloudflared/</code> first.</em></p>
+    <?php endif; ?>
 </div>
 
 <button type="submit" class="usm-btn usm-btn-primary">Save settings</button>

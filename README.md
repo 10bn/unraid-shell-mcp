@@ -55,6 +55,41 @@ The tradeoff: URLs are more likely than headers to end up somewhere you
 didn't intend — browser history, a reverse proxy's access log, a screenshot.
 Prefer the header form when you can; use the URL form when you can't.
 
+## Cloudflare tunnel modes
+
+Three ways to expose the server beyond your LAN, configurable from the
+Settings page's "Remote access" section:
+
+- **Quick tunnel** — no Cloudflare account needed. Gets you a random
+  `*.trycloudflare.com` hostname that changes every time the tunnel
+  restarts. Good for a quick test, not for a client you'll want to
+  reconnect to later.
+- **Authorized tunnel** (`tunnelMode: "local"`) — a stable hostname of your
+  choosing, set up without ever touching the Cloudflare dashboard. Enter
+  the hostname, save, and start the tunnel; the Settings page then shows an
+  **"Authorize with Cloudflare"** link. Click it (any device's browser
+  works — it doesn't need to reach this NAS), approve it in your Cloudflare
+  account, and the plugin runs `cloudflared tunnel create` + `tunnel route
+  dns` itself and starts serving. This is what Cloudflare's own docs call a
+  "locally-managed tunnel": its ingress configuration lives on this NAS
+  (under `/boot/config/plugins/unraid-shell-mcp/cloudflared/`, so it
+  survives reboots), not in Cloudflare's cloud.
+- **Managed tunnel** (`tunnelMode: "named"`) — also a stable hostname, but
+  you create the tunnel yourself first in the
+  [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/) and
+  paste its token into the Cloudflare tunnel token field. Cloudflare calls
+  this a "remotely-managed tunnel": the ingress configuration lives in
+  Cloudflare's cloud, pulled down via the token, so any change (new
+  hostname, different backend) is made in the dashboard, not here.
+
+Authorized mode is the more automated/convenient of the two stable-hostname
+options; managed mode is the one to reach for if you'd rather keep tunnel
+configuration centralized in Cloudflare's dashboard, or already manage other
+tunnels that way. Either way, changing the hostname later doesn't delete the
+old DNS record automatically — Cloudflare's own tooling doesn't do this
+either — so clean up a stale one by hand in the dashboard if you no longer
+want it.
+
 ## Security
 
 **Whoever holds the bearer token gets full shell access to this machine** —
@@ -145,12 +180,24 @@ choice, and is intentionally not what this project provides.
   by a user's own browser, which doesn't apply to this headless-NAS setup;
   the bearer/path token is the real access control here, not the `Host`
   header.
-- An optional `cloudflared` tunnel (quick or named mode) exposes the server
-  publicly. `rc.unraid-shell-mcp-cloudflared` reads tunnel settings from the
-  same config file via `unraid-shell-mcp config-get <field>` (no JSON
-  tooling needed in the shell script) and, in quick mode, parses the
+- An optional `cloudflared` tunnel (quick, authorized/`local`, or
+  managed/`named` mode — see "Cloudflare tunnel modes" above) exposes the
+  server publicly. `rc.unraid-shell-mcp-cloudflared` reads tunnel settings
+  from the same config file via `unraid-shell-mcp config-get <field>` (no
+  JSON tooling needed in the shell script) and, in quick mode, parses the
   ephemeral `*.trycloudflare.com` URL out of the cloudflared log, writing it
   to `/var/run/unraid-shell-mcp-cloudflared-url.txt` for the Settings page.
+  In authorized (`local`) mode it instead drives `cloudflared tunnel login`
+  (surfacing the one-time authorization URL the same way, via
+  `/var/run/unraid-shell-mcp-cloudflared-login-url.txt`), then `tunnel
+  create` and `tunnel route dns`, persisting cloudflared's own state
+  (`cert.pem`, the tunnel's credentials file, a generated ingress
+  `config.yml`) under `/boot/config/plugins/unraid-shell-mcp/cloudflared/`
+  so none of it needs redoing after a reboot. Every step that shells out to
+  `cloudflared` runs as a tracked background child (not just backgrounded
+  and forgotten) specifically so `stop()` can reliably kill whichever one
+  is currently in flight — including a `tunnel login` that's still waiting
+  on a human — instead of leaving it to run to completion as an orphan.
 
 ## Repository layout
 
@@ -208,14 +255,24 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
   It has not been installed on an actual Unraid boot device.
 - **cloudflared itself has not been exercised end-to-end by this project's own
   development environment** (its sandboxed network policy blocks fetching the
-  `cloudflared` binary directly, and blocks reaching `*.trycloudflare.com`
-  URLs to test a live tunnel). The quick/named-mode logic in
+  `cloudflared` binary directly, and blocks reaching `*.trycloudflare.com` or
+  Cloudflare's own dashboard to test a live tunnel or a real account
+  authorization). The quick/named/authorized-mode logic in
   `rc.unraid-shell-mcp-cloudflared` — mode switching, URL-file writing, clean
   process teardown, no leaked child processes — was verified against a fake
-  `cloudflared` binary that reproduces the real log format, and the
+  `cloudflared` binary that reproduces the real CLI output format, and the
   loopback-Host-header interaction with a real tunnel was diagnosed and
   fixed based on a live user report, but end-to-end tunnel behavior has not
-  been directly exercised from this sandbox.
+  been directly exercised from this sandbox. This applies especially to
+  authorized (`local`) mode: the full `tunnel login` → `tunnel create` →
+  `tunnel route dns` → `tunnel run` sequence, its handling of stopping
+  mid-authorization (verified it no longer leaks an orphaned `tunnel login`
+  process — a real bug this exact testing caught and fixed), and the
+  tunnel-id extraction (diffing `*.json` credential files rather than
+  parsing `tunnel create`'s stdout, specifically to avoid depending on an
+  exact text format) were all verified against the fake binary, but the
+  precise flags/output cloudflared's real CLI uses were not independently
+  confirmed against the genuine binary or a real Cloudflare account.
 - No Unraid Community Applications submission — install via the raw `.plg`
   URL above only.
 - **`cloudflared` is fetched over HTTPS from GitHub's "latest" release URL
