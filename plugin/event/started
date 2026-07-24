@@ -1,0 +1,15 @@
+#!/bin/bash
+#
+# event/started - Unraid's emhttp_event calls this automatically once the
+# array has fully started (every boot, and after any manual array
+# start/stop). This is what actually gets unraid-shell-mcp and its
+# optional Cloudflare tunnel running again on their own after a reboot;
+# the plugin's own install-time bash (in unraid-shell-mcp.plg) only runs
+# when the plugin itself is installed or updated, not on every boot.
+#
+# Both rc.d scripts already no-op safely (rc.unraid-shell-mcp-cloudflared
+# does nothing if tunnelMode is "off"; both do nothing if already
+# running), so calling them unconditionally here is safe.
+
+/etc/rc.d/rc.unraid-shell-mcp start
+/etc/rc.d/rc.unraid-shell-mcp-cloudflared start
