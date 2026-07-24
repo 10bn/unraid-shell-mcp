@@ -7,7 +7,10 @@
 #       doinst.sh                post-extraction script (chmod on binary + rc.d)
 #     etc/rc.d/                  populated by this Makefile from ../rc.d
 #     usr/local/sbin/            populated by this Makefile with the built binary
-#     usr/local/emhttp/plugins/  populated by this Makefile from ../../webgui
+#     usr/local/emhttp/plugins/  populated by this Makefile from ../../webgui and ../event
+#                                 (event/started is what Unraid's emhttp_event calls on
+#                                 every array start, so the server + tunnel come back up
+#                                 after a reboot without a manual click in the webGUI)
 #
 # On a real Slackware/Unraid host `makepkg` (part of pkgtools) is used to
 # produce a spec-correct .txz. On other build hosts (e.g. this repo's CI,
@@ -25,6 +28,7 @@ PKG_SUFFIX := $(PKGNAME)-$(VERSION)-$(ARCH)-$(BUILD)
 
 ROOT_DIR       := $(CURDIR)/root
 RCD_SRC_DIR    := $(CURDIR)/../rc.d
+EVENT_SRC_DIR  := $(CURDIR)/../event
 WEBGUI_SRC_DIR := $(CURDIR)/../../webgui
 GO_MODULE_DIR  := $(CURDIR)/../..
 OUT_DIR        := $(CURDIR)/out
@@ -44,10 +48,12 @@ stage: binary
 	install -d $(ROOT_DIR)/usr/local/sbin
 	install -d $(ROOT_DIR)/etc/rc.d
 	install -d $(ROOT_DIR)/usr/local/emhttp/plugins/unraid-shell-mcp
+	install -d $(ROOT_DIR)/usr/local/emhttp/plugins/unraid-shell-mcp/event
 	install -m 0755 $(BINARY_SRC) $(ROOT_DIR)/usr/local/sbin/unraid-shell-mcp
 	install -m 0755 $(RCD_SRC_DIR)/rc.unraid-shell-mcp $(ROOT_DIR)/etc/rc.d/rc.unraid-shell-mcp
 	install -m 0755 $(RCD_SRC_DIR)/rc.unraid-shell-mcp-cloudflared $(ROOT_DIR)/etc/rc.d/rc.unraid-shell-mcp-cloudflared
 	install -m 0644 $(WEBGUI_SRC_DIR)/UnraidShellMcp.page $(ROOT_DIR)/usr/local/emhttp/plugins/unraid-shell-mcp/UnraidShellMcp.page
+	install -m 0755 $(EVENT_SRC_DIR)/started $(ROOT_DIR)/usr/local/emhttp/plugins/unraid-shell-mcp/event/started
 	chmod 0755 $(ROOT_DIR)/install/doinst.sh
 
 package: stage

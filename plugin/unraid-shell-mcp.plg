@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.9">
+<!ENTITY version     "0.1.10">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,21 @@
 
 <CHANGES>
 ##&name;
+###0.1.10
+- Fix: the 0.1.9 "native inline-help" conversion of the Settings page did
+  not actually render on a real Unraid server — the raw dynamix template
+  syntax showed up as literal visible text instead of being turned into a
+  form with help icons. Reverted to plain, always-visible explanatory text
+  for every field (same information, guaranteed to display correctly); the
+  0.1.9 Plugins-list icon fix is unaffected and stays.
+- Settings page: "Allow all commands" now has its own card at the very top
+  of the settings form, separate from the whitelist, with an explicit
+  "Use with care, and only if you know what you're doing" line.
+- Add boot-time autostart: the MCP server and (if configured) the
+  Cloudflare tunnel now come back up on their own after a reboot, via a
+  new event/started script that Unraid's emhttp_event runs once the array
+  has finished starting. Previously both had to be started by hand from
+  the Settings page after every reboot.
 ###0.1.9
 - Settings page: replaced the custom "?" help buttons with Unraid's own
   built-in inline-help convention (dynamix form markup + a

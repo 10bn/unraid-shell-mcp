@@ -6,3 +6,4 @@
 chmod 755 etc/rc.d/rc.unraid-shell-mcp
 chmod 755 etc/rc.d/rc.unraid-shell-mcp-cloudflared
 chmod 755 usr/local/sbin/unraid-shell-mcp
+chmod 755 usr/local/emhttp/plugins/unraid-shell-mcp/event/started
