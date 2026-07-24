@@ -7,9 +7,21 @@
 # the plugin's own install-time bash (in unraid-shell-mcp.plg) only runs
 # when the plugin itself is installed or updated, not on every boot.
 #
-# Both rc.d scripts already no-op safely (rc.unraid-shell-mcp-cloudflared
-# does nothing if tunnelMode is "off"; both do nothing if already
-# running), so calling them unconditionally here is safe.
+# Each service starts only if its autostart toggle on the Settings page is
+# enabled (autostartMcp / autostartTunnel in config.json, both default
+# on). The comparison is against the literal string "false" so anything
+# unexpected — config-get failing, the binary missing, a field an older
+# config file doesn't have — fails open to starting, matching the
+# always-start behavior this hook shipped with. Both rc.d scripts also
+# no-op safely on their own (the cloudflared one does nothing if
+# tunnelMode is "off"; both do nothing if already running).
 
-/etc/rc.d/rc.unraid-shell-mcp start
-/etc/rc.d/rc.unraid-shell-mcp-cloudflared start
+BINARY="/usr/local/sbin/unraid-shell-mcp"
+CONFIG="/boot/config/plugins/unraid-shell-mcp/config.json"
+
+if [ "$("$BINARY" config-get -config "$CONFIG" autostartMcp 2>/dev/null)" != "false" ]; then
+    /etc/rc.d/rc.unraid-shell-mcp start
+fi
+if [ "$("$BINARY" config-get -config "$CONFIG" autostartTunnel 2>/dev/null)" != "false" ]; then
+    /etc/rc.d/rc.unraid-shell-mcp-cloudflared start
+fi

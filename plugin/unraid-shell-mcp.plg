@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "2026.07.24a">
+<!ENTITY version     "2026.07.24b">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,13 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24b
+- Settings page: new "Start at boot" section with separate checkboxes for
+  the MCP server and the Cloudflare tunnel (both on by default, matching
+  the automatic-start behavior introduced in 0.1.10). Unchecking one
+  means that service stays down after a reboot until started by hand from
+  the Status section. Existing installs keep starting both until the
+  toggles are changed.
 ###2026.07.24a
 - The installer now deletes package files left behind by older versions
   (each update previously left its ~2.5 MB .txz on the boot USB forever;

@@ -78,6 +78,19 @@ type Config struct {
 	// CloudflareTunnelHostname is the public hostname configured for the
 	// named tunnel. Only used when TunnelMode is "named".
 	CloudflareTunnelHostname string `json:"cloudflareTunnelHostname"`
+
+	// AutostartMcp starts the MCP server automatically once the array has
+	// come up after a boot (via the plugin's event/started hook). Pointers
+	// rather than plain bools so a config file written before these fields
+	// existed defaults to true (keep starting at boot, the behavior those
+	// installs already had) instead of bool's zero value false; Load
+	// normalizes nil to true, so consumers can deref freely.
+	AutostartMcp *bool `json:"autostartMcp"`
+
+	// AutostartTunnel does the same for the cloudflared tunnel. Only
+	// meaningful when TunnelMode isn't "off" — the tunnel rc.d script
+	// no-ops in that case regardless.
+	AutostartTunnel *bool `json:"autostartTunnel"`
 }
 
 // path returns the config file path, defaulting to DefaultPath.
@@ -106,8 +119,16 @@ func Load(configPath string) (*Config, error) {
 	if cfg.TunnelMode == "" {
 		cfg.TunnelMode = TunnelModeOff
 	}
+	if cfg.AutostartMcp == nil {
+		cfg.AutostartMcp = boolPtr(true)
+	}
+	if cfg.AutostartTunnel == nil {
+		cfg.AutostartTunnel = boolPtr(true)
+	}
 	return &cfg, nil
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 // LoadOrCreate loads the config file, generating a fresh one with a random
 // bearer token if it does not yet exist.
@@ -144,6 +165,8 @@ func Default() (*Config, error) {
 		CommandBlacklist: nil,
 		AllowAllCommands: false,
 		TunnelMode:       TunnelModeOff,
+		AutostartMcp:     boolPtr(true),
+		AutostartTunnel:  boolPtr(true),
 	}, nil
 }
 

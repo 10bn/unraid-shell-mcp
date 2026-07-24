@@ -88,3 +88,51 @@ func TestLoadOrCreateGeneratesFreshConfigWhenMissing(t *testing.T) {
 		t.Fatal("expected LoadOrCreate to persist and reuse the same token")
 	}
 }
+
+func TestAutostartDefaultsTrueForOldConfigFiles(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.json")
+
+	// A config file written before the autostart fields existed.
+	old := `{"bearerToken":"tok","listenAddr":"127.0.0.1:8483","tunnelMode":"off"}`
+	if err := os.WriteFile(p, []byte(old), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AutostartMcp == nil || !*cfg.AutostartMcp {
+		t.Errorf("expected AutostartMcp to default to true for old config, got %v", cfg.AutostartMcp)
+	}
+	if cfg.AutostartTunnel == nil || !*cfg.AutostartTunnel {
+		t.Errorf("expected AutostartTunnel to default to true for old config, got %v", cfg.AutostartTunnel)
+	}
+}
+
+func TestAutostartFalseSurvivesRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.json")
+
+	cfg, err := Default()
+	if err != nil {
+		t.Fatalf("Default: %v", err)
+	}
+	f := false
+	cfg.AutostartMcp = &f
+	if err := cfg.Save(p); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.AutostartMcp == nil || *loaded.AutostartMcp {
+		t.Errorf("expected AutostartMcp=false to survive a save/load round trip")
+	}
+	if loaded.AutostartTunnel == nil || !*loaded.AutostartTunnel {
+		t.Errorf("expected AutostartTunnel to remain true, got %v", loaded.AutostartTunnel)
+	}
+}
