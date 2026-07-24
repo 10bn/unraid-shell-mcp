@@ -30,15 +30,19 @@ const (
 // New builds an MCP server exposing the execute-command tool. Every
 // invocation is checked against matcher before anything runs, and every
 // invocation (allowed or rejected) is recorded via logger as a structured
-// audit event.
-func New(matcher *whitelist.Matcher, logger *slog.Logger) *server.MCPServer {
+// audit event. version is what the server reports to MCP clients during
+// initialization (the plugin release version, injected at build time).
+func New(matcher *whitelist.Matcher, logger *slog.Logger, version string) *server.MCPServer {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if version == "" {
+		version = "dev"
 	}
 
 	s := server.NewMCPServer(
 		"unraid-shell-mcp",
-		"0.1.0",
+		version,
 		server.WithToolCapabilities(false),
 	)
 

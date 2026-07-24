@@ -41,7 +41,8 @@ all: package
 
 binary:
 	cd $(GO_MODULE_DIR) && \
-		CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" \
+		CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+		-ldflags="-s -w -X main.version=$(VERSION)" \
 		-o dist/unraid-shell-mcp ./cmd/unraid-shell-mcp
 
 stage: binary

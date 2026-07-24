@@ -19,6 +19,11 @@ import (
 	"github.com/10bn/unraid-shell-mcp/internal/whitelist"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=..." (see
+// plugin/package/Makefile); it is reported to MCP clients and logged at
+// startup.
+var version = "dev"
+
 // configGetFields lists the config fields the "config-get" subcommand may
 // print. It exists so rc.d shell scripts (no JSON tooling on stock Unraid)
 // can read tunnel settings without parsing config.json themselves. The
@@ -66,7 +71,7 @@ func main() {
 	}
 
 	auditLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	mcpSrv := mcp.New(matcher, auditLogger)
+	mcpSrv := mcp.New(matcher, auditLogger, version)
 	// mcp-go's streamable HTTP transport rejects (403) any request arriving
 	// over a loopback connection whose Host header isn't a localhost value,
 	// as DNS-rebinding protection for local desktop MCP servers reachable by
@@ -86,7 +91,7 @@ func main() {
 	// token, embedded in the URL itself instead of a header.
 	mux.Handle("/mcp/{token}", auth.PathTokenMiddleware(cfg.BearerToken, streamable))
 
-	log.Printf("unraid-shell-mcp listening on %s", cfg.ListenAddr)
+	log.Printf("unraid-shell-mcp %s listening on %s", version, cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
