@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.8">
+<!ENTITY version     "0.1.9">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -17,10 +17,20 @@
 <!ENTITY rcCF        "/etc/rc.d/rc.&name;-cloudflared">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="terminal" min="6.9.0">
 
 <CHANGES>
 ##&name;
+###0.1.9
+- Settings page: replaced the custom "?" help buttons with Unraid's own
+  built-in inline-help convention (dynamix form markup + a
+  &lt;blockquote class="inline_help"&gt; per field, which Unraid itself turns
+  into a clickable help icon), instead of a bespoke toggle this plugin
+  implemented on its own. Same explanations, native mechanism.
+- Add a proper icon to the Plugins page's installed-plugins list (was
+  showing a generic placeholder there before) via the documented
+  &lt;PLUGIN icon="..."&gt; attribute, matching the icon already used next to
+  its name in the Settings menu.
 ###0.1.8
 - Settings page: show a clear "Authorized. Finishing tunnel setup..."
   message for authorized-tunnel mode once you've approved the Cloudflare
