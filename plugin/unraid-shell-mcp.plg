@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.5">
+<!ENTITY version     "0.1.6">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,16 @@
 
 <CHANGES>
 ##&name;
+###0.1.6
+- Add a third Cloudflare tunnel mode: "Authorized tunnel" (tunnelMode
+  "local"). Enter the hostname you want, start the tunnel, and click the
+  "Authorize with Cloudflare" link that appears on the Settings page — no
+  Cloudflare dashboard setup needed. Behind the scenes this runs
+  `cloudflared tunnel login`, then `tunnel create` and `tunnel route dns`
+  itself, persisting cloudflared's own state under this plugin's config
+  directory so it survives reboots. The existing "Managed tunnel" (paste a
+  token from the dashboard yourself) is unchanged and still available for
+  anyone who prefers to keep tunnel config centralized there.
 ###0.1.5
 - Security: closed two hard-blocklist gaps found in a follow-up review.
   The "recursive force delete of root" rule only recognized short combined

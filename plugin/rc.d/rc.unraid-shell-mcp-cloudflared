@@ -15,6 +15,21 @@ PIDFILE="/var/run/unraid-shell-mcp-cloudflared.pid"
 LOGFILE="/var/log/unraid-shell-mcp-cloudflared.log"
 URLFILE="/var/run/unraid-shell-mcp-cloudflared-url.txt"
 
+# State for tunnelMode "local" (a Cloudflare "locally-managed tunnel": no
+# token pasted from the dashboard — instead we run `cloudflared tunnel
+# login` ourselves, then `tunnel create` + `tunnel route dns`). All of it
+# lives under /boot/config so it survives a reboot the same way config.json
+# does; cloudflared's own $HOME/.cloudflared default location would not,
+# since Unraid's root filesystem is a RAM overlay rebuilt on every boot.
+CF_STATE_DIR="/boot/config/plugins/unraid-shell-mcp/cloudflared"
+CF_HOME_DIR="$CF_STATE_DIR/home"
+CF_CERT="$CF_HOME_DIR/.cloudflared/cert.pem"
+CF_TUNNEL_NAME="unraid-shell-mcp"
+CF_TUNNEL_ID_FILE="$CF_STATE_DIR/tunnel_id"
+CF_CONFIG_YML="$CF_HOME_DIR/.cloudflared/config.yml"
+LOGIN_LOGFILE="/var/log/unraid-shell-mcp-cloudflared-login.log"
+LOGIN_URLFILE="/var/run/unraid-shell-mcp-cloudflared-login-url.txt"
+
 config_get() {
     "$MCP_BINARY" config-get -config "$CONFIG" "$1" 2>/dev/null
 }
@@ -36,6 +51,134 @@ watch_quick_url() {
     done
 }
 
+# watch_login_url tails the login log until `cloudflared tunnel login`
+# prints the one-time Cloudflare authorization URL, publishing it to
+# LOGIN_URLFILE for the Settings page to render as a clickable link. Exits
+# once cert.pem appears (authorization completed) so the webGUI knows to
+# stop showing the link, or after a generous timeout covering how long a
+# human might reasonably take to click through and log in.
+watch_login_url() {
+    local deadline=$((SECONDS + 600))
+    while [ $SECONDS -lt $deadline ]; do
+        if [ -f "$CF_CERT" ]; then
+            rm -f "$LOGIN_URLFILE"
+            return 0
+        fi
+        local url
+        url="$(grep -oE 'https://[a-zA-Z0-9./?=_%&-]*cloudflare[a-zA-Z0-9./?=_%&-]*' "$LOGIN_LOGFILE" 2>/dev/null | head -n1)"
+        if [ -n "$url" ]; then
+            echo "$url" >"$LOGIN_URLFILE"
+        fi
+        sleep 1
+    done
+}
+
+# run_local_tunnel drives the full "locally-managed tunnel" lifecycle:
+# authorize (if not already), create the tunnel (if not already), route the
+# configured hostname to it, write an ingress config, and finally exec into
+# `cloudflared tunnel run` so the PID this was launched under (tracked in
+# PIDFILE by the caller) stays valid for the tunnel's entire lifetime,
+# authorization step included.
+run_local_tunnel() {
+    local hostname="$1"
+    local listen_addr="$2"
+    local current_child=""
+
+    # `tunnel login` alone can block for minutes waiting on a human to
+    # authorize. Killing just this function's own pid on stop() (the normal
+    # way every other mode is stopped) would not by itself touch whichever
+    # cloudflared child it's currently blocked on — an already-forked child
+    # is not signaled just because its parent died, it's simply reparented
+    # and keeps running as an orphan. Track the active child's pid and
+    # forward the signal to it explicitly instead.
+    trap 'if [ -n "$current_child" ]; then kill "$current_child" 2>/dev/null; fi; exit 143' TERM INT
+
+    mkdir -p "$CF_HOME_DIR/.cloudflared"
+    chmod 700 "$CF_STATE_DIR" "$CF_HOME_DIR" "$CF_HOME_DIR/.cloudflared" 2>/dev/null
+
+    if [ ! -f "$CF_CERT" ]; then
+        echo "Not yet authorized with Cloudflare; starting 'cloudflared tunnel login'."
+        echo "Check the Settings page for a link to authorize."
+        rm -f "$LOGIN_URLFILE"
+        : >"$LOGIN_LOGFILE"
+        watch_login_url &
+        local watcher_pid=$!
+        HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel login >>"$LOGIN_LOGFILE" 2>&1 &
+        current_child=$!
+        wait "$current_child"
+        local login_rc=$?
+        current_child=""
+        kill "$watcher_pid" 2>/dev/null
+        rm -f "$LOGIN_URLFILE"
+        if [ "$login_rc" -ne 0 ]; then
+            echo "cloudflared tunnel login failed or timed out; see $LOGIN_LOGFILE"
+            return 1
+        fi
+        echo "Authorized with Cloudflare."
+    fi
+    chmod 600 "$CF_CERT" 2>/dev/null
+
+    local tunnel_id=""
+    if [ -f "$CF_TUNNEL_ID_FILE" ]; then
+        tunnel_id="$(cat "$CF_TUNNEL_ID_FILE")"
+    fi
+    if [ -z "$tunnel_id" ] || [ ! -f "$CF_HOME_DIR/.cloudflared/$tunnel_id.json" ]; then
+        echo "Creating tunnel '$CF_TUNNEL_NAME'..."
+        local before after new_file create_rc
+        before="$(ls "$CF_HOME_DIR"/.cloudflared/*.json 2>/dev/null | sort)"
+        HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel create "$CF_TUNNEL_NAME" >>"$LOGFILE" 2>&1 &
+        current_child=$!
+        wait "$current_child"
+        create_rc=$?
+        current_child=""
+        if [ "$create_rc" -ne 0 ]; then
+            echo "'tunnel create' reported an error (harmless if '$CF_TUNNEL_NAME' already exists from a previous run whose id this script lost track of); checking for it..."
+        fi
+        after="$(ls "$CF_HOME_DIR"/.cloudflared/*.json 2>/dev/null | sort)"
+        new_file="$(comm -13 <(echo "$before") <(echo "$after") | head -n1)"
+        if [ -n "$new_file" ]; then
+            tunnel_id="$(basename "$new_file" .json)"
+        else
+            # Fall back to asking cloudflared directly for the existing
+            # tunnel's id if create failed because it already exists.
+            tunnel_id="$(HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel list -o json 2>>"$LOGFILE" \
+                | grep -oE '"id":"[a-f0-9-]{36}"[^}]*"name":"'"$CF_TUNNEL_NAME"'"' \
+                | grep -oE '[a-f0-9-]{36}' | head -n1)"
+        fi
+        if [ -z "$tunnel_id" ]; then
+            echo "Could not determine the tunnel id after 'tunnel create'; see $LOGFILE"
+            return 1
+        fi
+        echo "$tunnel_id" >"$CF_TUNNEL_ID_FILE"
+        chmod 600 "$CF_TUNNEL_ID_FILE"
+    fi
+    chmod 600 "$CF_HOME_DIR/.cloudflared/$tunnel_id.json" 2>/dev/null
+
+    echo "Routing https://$hostname to tunnel $tunnel_id..."
+    HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel route dns "$tunnel_id" "$hostname" >>"$LOGFILE" 2>&1 &
+    current_child=$!
+    wait "$current_child"
+    local route_rc=$?
+    current_child=""
+    if [ "$route_rc" -ne 0 ]; then
+        echo "'tunnel route dns' reported an error (harmless if $hostname is already routed to this tunnel); see $LOGFILE"
+    fi
+
+    cat >"$CF_CONFIG_YML" <<YAML
+tunnel: $tunnel_id
+credentials-file: $CF_HOME_DIR/.cloudflared/$tunnel_id.json
+ingress:
+  - hostname: $hostname
+    service: http://$listen_addr
+  - service: http_status:404
+YAML
+    chmod 600 "$CF_CONFIG_YML"
+
+    echo "https://$hostname" >"$URLFILE"
+    echo "Starting tunnel..."
+    exec env HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel --no-autoupdate run --config "$CF_CONFIG_YML" "$tunnel_id"
+}
+
 start() {
     if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         echo "unraid-shell-mcp-cloudflared is already running (pid $(cat "$PIDFILE"))"
@@ -54,7 +197,7 @@ start() {
         return 1
     fi
 
-    rm -f "$URLFILE"
+    rm -f "$URLFILE" "$LOGIN_URLFILE"
     : >"$LOGFILE"
 
     case "$tunnel_mode" in
@@ -82,6 +225,28 @@ start() {
             echo $! >"$PIDFILE"
             disown
             ;;
+        local)
+            local hostname listen_addr
+            hostname="$(config_get cloudflareTunnelHostname)"
+            listen_addr="$(config_get listenAddr)"
+            if [ -z "$hostname" ]; then
+                echo "tunnelMode is 'local' but no cloudflareTunnelHostname is configured"
+                return 1
+            fi
+            # Backgrounded as a function call within this same script (not
+            # nohup'd as a fresh external process) so it naturally sees
+            # every variable above without needing to export them across a
+            # process boundary; run_local_tunnel exec's into cloudflared at
+            # the very end, so $! stays the correct pid to track in PIDFILE
+            # through every phase (login wait, create, route, run). It
+            # traps TERM itself to kill whichever cloudflared child it's
+            # currently waiting on (see its definition above) — without
+            # that, stop() killing just this pid mid-login/create/route
+            # would orphan that child rather than actually stop anything.
+            run_local_tunnel "$hostname" "$listen_addr" >>"$LOGFILE" 2>&1 &
+            echo $! >"$PIDFILE"
+            disown
+            ;;
         *)
             echo "unknown tunnelMode: $tunnel_mode"
             return 1
@@ -105,10 +270,15 @@ stop() {
         done
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
     fi
-    rm -f "$PIDFILE" "$URLFILE"
+    rm -f "$PIDFILE" "$URLFILE" "$LOGIN_URLFILE"
 }
 
 status() {
+    if [ -f "$LOGIN_URLFILE" ]; then
+        echo "unraid-shell-mcp-cloudflared is waiting for Cloudflare authorization"
+        echo "Authorize at: $(cat "$LOGIN_URLFILE")"
+        return 0
+    fi
     if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         echo "unraid-shell-mcp-cloudflared is running (pid $(cat "$PIDFILE"))"
         if [ -f "$URLFILE" ]; then
