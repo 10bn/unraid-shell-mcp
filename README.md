@@ -218,3 +218,11 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
   been directly exercised from this sandbox.
 - No Unraid Community Applications submission — install via the raw `.plg`
   URL above only.
+- **`cloudflared` is fetched over HTTPS from GitHub's "latest" release URL
+  with no checksum or signature pinned in the `.plg` installer**, unlike
+  this project's own `.txz` (which is md5-verified before `upgradepkg` ever
+  runs). It only downloads once (skipped if the binary already exists) and
+  runs as root. This is a deliberate, accepted tradeoff for now — pinning a
+  specific version + hash would need to be kept in sync with upstream
+  releases — rather than an oversight; tightening it is possible if that
+  tradeoff stops being acceptable.

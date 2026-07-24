@@ -31,11 +31,28 @@ jobs:
 
       - name: Derive version and tag name
         id: version
+        env:
+          # Passed via env rather than interpolated directly into the script
+          # below (i.e. not `version="${{ inputs.version }}"`): workflow_dispatch
+          # inputs are attacker-influenceable free text, and GitHub Actions'
+          # `${{ }}` expressions substitute textually into the run: script
+          # before the shell ever parses it — a version string containing
+          # shell metacharacters would execute as code in a runner that holds
+          # contents:write and pushes to main. Routing it through env keeps it
+          # as inert data; the regex check below then guarantees every
+          # downstream `${{ steps.version.outputs.* }}` use elsewhere in this
+          # workflow is safe too, since by construction it can only ever be
+          # digits and dots.
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ inputs.version }}"
+            version="$INPUT_VERSION"
           else
             version="${GITHUB_REF_NAME#v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version '$version' (expected e.g. 0.1.0)"
+            exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"

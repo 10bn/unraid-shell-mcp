@@ -104,10 +104,62 @@ func TestHardBlocklistDoesNotFalsePositiveOnSafeCommands(t *testing.T) {
 		"docker ps",
 		"cat /var/log/syslog",
 		"rm /tmp/scratch.txt",
+		"rm -rf /mnt/user/tmp",
+		"rm -rf /mnt/user/appdata/*",
+		"cp /dev/zero /mnt/user/scratch.img",
 	}
 	for _, cmd := range safe {
 		if allowed, reason := m.Allowed(cmd); !allowed {
 			t.Errorf("expected safe command %q to be allowed, rejected: %s", cmd, reason)
+		}
+	}
+}
+
+func TestHardBlocklistCatchesGNULongOptionRmBypass(t *testing.T) {
+	// A prior version of the hard blocklist only recognized short combined
+	// flag clusters (-rf, -fr, ...) for the "recursive force delete of
+	// root" rule. rm accepts the exact same behavior via GNU long options,
+	// in any order, which must be caught just as reliably.
+	m, err := New([]string{`.*`}, nil, false)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	dangerous := []string{
+		"rm --recursive --force /",
+		"rm --force --recursive /",
+		"rm -r --force /",
+		"rm --recursive -f /",
+		"rm --recursive /*",
+	}
+	for _, cmd := range dangerous {
+		if allowed, reason := m.Allowed(cmd); allowed {
+			t.Errorf("expected hard blocklist to reject %q, but it was allowed", cmd)
+		} else if reason != "blocked by hard-coded safety rule (non-configurable)" {
+			t.Errorf("command %q rejected for wrong reason: %s", cmd, reason)
+		}
+	}
+}
+
+func TestHardBlocklistCatchesRawDeviceWritesViaOtherUtilities(t *testing.T) {
+	// dd/redirection/mkfs/wipefs/shred/blkdiscard aren't the only way to
+	// write straight to a block device; tee, cp, install, and rsync can too
+	// when given a /dev/sdX-style destination.
+	m, err := New([]string{`.*`}, nil, false)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	dangerous := []string{
+		"echo oops | tee /dev/sda",
+		"cp /dev/zero /dev/sda",
+		"install -m 0644 payload /dev/sda",
+		"rsync -a payload /dev/sda",
+		"dcfldd if=/dev/zero of=/dev/sda",
+	}
+	for _, cmd := range dangerous {
+		if allowed, reason := m.Allowed(cmd); allowed {
+			t.Errorf("expected hard blocklist to reject %q, but it was allowed", cmd)
+		} else if reason != "blocked by hard-coded safety rule (non-configurable)" {
+			t.Errorf("command %q rejected for wrong reason: %s", cmd, reason)
 		}
 	}
 }
