@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 0.1.0 (no leading v)"
+        description: "Version to release, e.g. 2026.07.24 or 2026.07.24a (no leading v)"
         required: true
         type: string
 
@@ -42,7 +42,7 @@ jobs:
           # as inert data; the regex check below then guarantees every
           # downstream `${{ steps.version.outputs.* }}` use elsewhere in this
           # workflow is safe too, since by construction it can only ever be
-          # digits and dots.
+          # digits, dots, and at most one trailing lowercase letter.
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -50,8 +50,12 @@ jobs:
           else
             version="${GITHUB_REF_NAME#v}"
           fi
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Invalid version '$version' (expected e.g. 0.1.0)"
+          # Date-based versions (YYYY.MM.DD, plus an optional a/b/... suffix
+          # for a second release on the same day). Unraid's plugin manager
+          # compares versions with plain strcmp, which this format survives;
+          # the old 0.1.x numeric scheme did not (0.1.10 sorted below 0.1.9).
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+[a-z]?$ ]]; then
+            echo "::error::Invalid version '$version' (expected e.g. 2026.07.24 or 2026.07.24a)"
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
