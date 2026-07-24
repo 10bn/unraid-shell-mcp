@@ -302,19 +302,24 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
   every change; the fake-binary suite remains the pre-release check.
 - No Unraid Community Applications submission — install via the raw `.plg`
   URL above only.
-- **Unraid's plugin manager compares versions with PHP's `strcmp`, not
-  numerically.** A plain lexicographic comparison considers `0.1.10` to be
-  *older* than `0.1.9` (because the character `1` sorts before `9`), so
-  updating across such a boundary is silently skipped with "not installing
-  older version" — which actually happened for this plugin's 0.1.9 →
-  0.1.10/0.1.11 updates. This project therefore switched to date-based
-  versions (`YYYY.MM.DD`, plus an `a`/`b`/… suffix for a second release on
-  the same day — the common Unraid-plugin convention) as of `2026.07.24`,
-  which strcmp orders correctly, permanently. Every date version also
-  sorts above every old `0.1.x` version, so updating from any earlier
-  release works through the normal update path. If you're ever bitten by
-  the quirk on some other plugin: `plugin install <plg-url> forced` from a
-  terminal bypasses the version check.
+- **Unraid runs two different version comparisons on updates, and both
+  have quirks.** The plugin manager compares `.plg` versions with PHP's
+  `strcmp` — plain lexicographic, so it considered `0.1.10` *older* than
+  `0.1.9` and silently skipped that update ("not installing older
+  version"; really happened here for 0.1.9 → 0.1.10/0.1.11). Its
+  `upgradepkg` then separately compares installed package names with
+  `sort -V` — which treats a trailing letter as *older* than none, so a
+  `2026.07.24b` release was skipped as "newer version already installed"
+  (also really happened; that version reported itself installed while the
+  old files kept running). This project's versions are therefore
+  date-based, digits and dots only: `YYYY.MM.DD`, with a numeric fourth
+  component (`YYYY.MM.DD.N`) for further releases on the same day — a
+  format both comparisons order correctly, which also sorts above every
+  old `0.1.x` and lettered version, so updating from any earlier release
+  works through the normal update path. If an update is ever wrongly
+  skipped anyway: `plugin install <plg-url> forced` from a terminal
+  bypasses the `.plg`-level check (and `upgradepkg --reinstall` the
+  package-level one).
 - **`cloudflared` is fetched over HTTPS from GitHub's "latest" release URL
   with no checksum or signature pinned in the `.plg` installer**, unlike
   this project's own `.txz` (which is md5-verified before `upgradepkg` ever
