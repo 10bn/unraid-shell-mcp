@@ -183,10 +183,8 @@ the token like a root password, because it effectively is one.
   still apply and cannot be bypassed by it. It exists for cases like local
   testing where maintaining a whitelist is more friction than it's worth;
   it is never the default, a fresh install/config file always has it
-  `false`, and enabling it prints a large, hard-to-miss warning in the
-  server log on every start. Toggling it in the webGUI requires an extra
-  JS confirmation dialog on save. Understand that enabling it hands full
-  shell access to anyone with the bearer token before you flip it.
+  `false`. Understand that enabling it hands full shell access to anyone
+  with the bearer token before you flip it.
 - **Output is capped at 1 MiB per stream (stdout/stderr).** A command that
   exceeds it is terminated immediately rather than left running until its
   timeout while consuming unbounded memory (e.g. `yes`, or `cat` on a huge
