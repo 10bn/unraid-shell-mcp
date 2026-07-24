@@ -177,8 +177,9 @@ choice, and is intentionally not what this project provides.
   SMART data; explicit denials like `reboot`, `docker rm`/`stop`, `passwd`)
   to adapt rather than write from scratch. The Settings page has "Load
   example whitelist"/"Load example blacklist" buttons for the same
-  template, plus inline "?" help throughout explaining each field
-  (including exactly what the hard-coded safety blocklist covers).
+  template, plus inline help throughout explaining each field (including
+  exactly what the hard-coded safety blocklist covers) via Unraid's own
+  built-in per-field help icon, not a custom one.
 - The MCP library's loopback DNS-rebinding protection (rejecting requests
   whose `Host` header isn't a localhost value) is disabled: cloudflared
   forwards tunneled requests to our `127.0.0.1` listener while preserving the

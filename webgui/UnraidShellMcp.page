@@ -169,40 +169,6 @@ $cfRunning  = strpos($cfStatus, ' is running') !== false;
     margin: 8px 0;
     text-decoration: none;
 }
-.usm-help-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 1px solid var(--usm-accent);
-    color: var(--usm-accent);
-    background: transparent;
-    font-size: 0.75em;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0;
-    vertical-align: middle;
-    margin-left: 4px;
-}
-.usm-help-btn:hover {
-    background: var(--usm-accent);
-    color: #fff;
-}
-.usm-help-text {
-    display: none;
-    background: rgba(127, 127, 127, 0.12);
-    border-left: 3px solid var(--usm-accent);
-    padding: 8px 12px;
-    margin: 6px 0 12px;
-    border-radius: 4px;
-    font-size: 0.92em;
-}
-.usm-help-text.usm-open {
-    display: block;
-}
 .usm-card {
     border: 1px solid var(--usm-card-border);
     border-radius: 10px;
@@ -342,15 +308,10 @@ textarea.usm-list {
     <div class="usm-card-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M8 12l2.5 2.5L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <h3>Status</h3>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-status')" title="What is this?">?</button>
     </div>
-    <div id="usm-help-status" class="usm-help-text">
-        <strong>MCP server</strong> is the actual <code>execute-command</code> service &mdash;
-        it must be running for any MCP client to connect at all, tunnel or no tunnel.
-        <strong>cloudflared</strong> is only the optional public-URL piece (see "Remote access"
-        below); if Tunnel mode is Off, it's expected to always show stopped, and that's fine
-        &mdash; the server is still reachable on your LAN either way.
-    </div>
+    <p><em>cloudflared is only the optional public-URL piece below; if Tunnel mode is Off it's
+       expected to always show stopped, and that's fine — the MCP server is still reachable on
+       your LAN either way.</em></p>
 
     <div class="usm-status-row">
         <span class="usm-status-label">MCP server</span>
@@ -418,68 +379,58 @@ textarea.usm-list {
     <div class="usm-card-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2"/></svg>
         <h3>Bearer token</h3>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-token')" title="What is this?">?</button>
     </div>
-    <div id="usm-help-token" class="usm-help-text">
-        This is the credential every MCP request must present &mdash; whoever has it can run
-        any command your whitelist allows, so treat it exactly like a root password. There are
-        two ways a client can send it: as an <code>Authorization: Bearer</code> header (below),
-        or embedded directly in the URL for clients that can't set custom headers (further
-        down). Both are the literal same secret, just carried differently &mdash; rotating it
-        here invalidates both at once. Prefer the header form when your client supports it:
-        URLs are more likely to end up somewhere unintended, like browser history or a proxy's
-        access log.
-    </div>
-    <p>Present this as <code>Authorization: Bearer &lt;token&gt;</code> on every MCP request.</p>
+    <p>Present this as <code>Authorization: Bearer &lt;token&gt;</code> on every MCP request. Whoever
+       has it can run any command your whitelist allows, so treat it exactly like a root password.</p>
     <p class="usm-token"><?= htmlspecialchars($bearerToken) ?></p>
 
     <p>If your MCP client only accepts a URL and has no way to set a custom
        header, select "No authentication" there and paste this instead
        &mdash; the token is embedded in the URL itself, so it needs nothing
-       extra configured on the client side:</p>
+       extra configured on the client side. It's the literal same secret as above, just carried
+       differently; prefer the header form when your client supports it, since URLs are more
+       likely to end up somewhere unintended, like browser history or a proxy's access log:</p>
     <p class="usm-token"><?= htmlspecialchars($fullMcpUrl) ?></p>
 
-    <div class="usm-btn-row">
-        <form method="post" onsubmit="return confirm('Rotate the bearer token? Existing MCP clients will need the new token.');">
-            <input type="hidden" name="action" value="rotate_token">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-            <button type="submit" class="usm-btn">Rotate token</button>
-        </form>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-rotate')" title="What does this do?">?</button>
-    </div>
-    <div id="usm-help-rotate" class="usm-help-text">
-        Generates a brand new random token and immediately replaces the old one &mdash; there's
-        no way to see the old one again afterward. Any MCP client still configured with the
-        previous token stops working until you update it with the new one shown above.
-    </div>
+    <form method="post" markdown="1" onsubmit="return confirm('Rotate the bearer token? Existing MCP clients will need the new token.');">
+        <input type="hidden" name="action" value="rotate_token">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+
+_(Rotate token)_:
+: <input type="submit" class="usm-btn" value="Rotate token">
+
+<blockquote class="inline_help">
+Generates a brand new random token and immediately replaces the old one — there's no way to see
+the old one again afterward. Any MCP client still configured with the previous token stops
+working until you update it with the new one shown above.
+</blockquote>
+    </form>
 </div>
 
-<form method="post">
+<form method="post" markdown="1">
 <input type="hidden" name="action" value="save_settings">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
 
 <div class="usm-card usm-section">
     <div class="usm-card-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <h3>Command whitelist</h3>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-whitelist')" title="How does this work?">?</button>
     </div>
-    <div id="usm-help-whitelist" class="usm-help-text">
-        Every line is a regular expression. Before a command is allowed to run, it must match
-        <strong>the entire command string</strong> against at least one line &mdash; not just the
-        start of it. This matters: with ordinary "appears somewhere" matching, a pattern like
-        <code>^echo</code> would also match (and therefore fully run) <code>echo hi; cat
-        /etc/shadow</code>, because that string does start with <code>echo</code>. Requiring a
-        full match means you have to explicitly write what comes after &mdash; <code>^echo
-        .*$</code> if you want to allow anything after <code>echo</code>, or <code>^echo
-        hi$</code> if you only ever want that one exact command. An empty whitelist allows
-        nothing to run at all; there's no "empty means everything" fallback, by design.
-    </div>
-    <p>One regular expression per line. A command must match at least one line <em>in full</em>
-       (not just a prefix) to be eligible to run. <strong>An empty whitelist blocks all
-       commands</strong> &mdash; there is no "allow everything" fallback, unless you explicitly
-       enable the option below.</p>
-    <textarea class="usm-list" name="commandWhitelist" id="usmWhitelistText"><?= htmlspecialchars($whitelistText) ?></textarea>
+
+_(Command whitelist)_:
+: <textarea class="usm-list" name="commandWhitelist" id="usmWhitelistText"><?= htmlspecialchars($whitelistText) ?></textarea>
+
+<blockquote class="inline_help">
+One regular expression per line. Before a command is allowed to run, it must match the entire
+command string against at least one line — not just the start of it. This matters: with
+ordinary "appears somewhere" matching, a pattern like <code>^echo</code> would also match (and
+therefore fully run) <code>echo hi; cat /etc/shadow</code>, because that string does start with
+<code>echo</code>. Requiring a full match means you have to explicitly write what comes after —
+<code>^echo .*$</code> if you want to allow anything after <code>echo</code>, or
+<code>^echo hi$</code> if you only ever want that one exact command. An empty whitelist allows
+nothing to run at all; there's no "empty means everything" fallback, by design.
+</blockquote>
+
     <p>
         <button type="button" class="usm-btn" onclick="usmLoadExample('usmWhitelistText', 'usmWhitelistExample')">Load example whitelist</button>
         <em>Replaces the text above with a starting-point set of safe, read-only commands
@@ -502,42 +453,38 @@ textarea.usm-list {
 ^smartctl -a /dev/sd[a-z][0-9]*$
 ^smartctl -a /dev/nvme[0-9]n[0-9]$
 ^journalctl -n 200$</pre>
-    <p>
-        <label>
-            <input type="checkbox" id="allowAllCommands" name="allowAllCommands" <?= $allowAllCommands ? 'checked' : '' ?>>
-            <strong>Allow all commands</strong> &mdash; bypasses the whitelist above. The hard-coded
-            safety blocklist and the command blacklist below still apply.
-            <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-allowall')" title="What does this mean?">?</button>
-        </label>
-    </p>
-    <div id="usm-help-allowall" class="usm-help-text">
-        With this on, <strong>any</strong> command not caught by the hard-coded blocklist or your
-        blacklist below can run &mdash; the whitelist above is skipped entirely, even if it's
-        empty. That's the same practical access as a root shell, for anyone holding the bearer
-        token. It exists for cases like local testing where maintaining a whitelist is more
-        friction than it's worth. It's never on by default; a fresh install always starts with
-        it off.
-    </div>
+
+_(Allow all commands)_:
+: <label><input type="checkbox" id="allowAllCommands" name="allowAllCommands" <?= $allowAllCommands ? 'checked' : '' ?>> bypasses the whitelist above</label>
+
+<blockquote class="inline_help">
+With this on, <strong>any</strong> command not caught by the hard-coded blocklist or your
+blacklist below can run — the whitelist above is skipped entirely, even if it's empty. That's
+the same practical access as a root shell, for anyone holding the bearer token. It exists for
+cases like local testing where maintaining a whitelist is more friction than it's worth. It's
+never on by default; a fresh install always starts with it off.
+</blockquote>
 </div>
 
 <div class="usm-card usm-section">
     <div class="usm-card-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <h3>Command blacklist</h3>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-blacklist')" title="How does this work?">?</button>
     </div>
-    <div id="usm-help-blacklist" class="usm-help-text">
-        Every line is a regular expression, checked using ordinary "appears anywhere in the
-        command" matching (unlike the whitelist above, which requires a full match) &mdash; so a
-        pattern here still catches a dangerous fragment tucked after a <code>;</code> or
-        <code>&amp;&amp;</code> in an otherwise-allowed command. A match here rejects the command
-        even if the whitelist would have allowed it. This is <em>your</em> deny-list, layered on
-        top of &mdash; never a replacement for &mdash; the hard-coded safety blocklist below,
-        which always applies no matter what and can't be edited.
-    </div>
-    <p>One regular expression per line. Checked in addition to a hard-coded, non-configurable
-       safety blocklist (see below) that always applies regardless of the whitelist.</p>
-    <textarea class="usm-list" name="commandBlacklist" id="usmBlacklistText"><?= htmlspecialchars($blacklistText) ?></textarea>
+
+_(Command blacklist)_:
+: <textarea class="usm-list" name="commandBlacklist" id="usmBlacklistText"><?= htmlspecialchars($blacklistText) ?></textarea>
+
+<blockquote class="inline_help">
+One regular expression per line, checked using ordinary "appears anywhere in the command"
+matching (unlike the whitelist above, which requires a full match) — so a pattern here still
+catches a dangerous fragment tucked after a <code>;</code> or <code>&amp;&amp;</code> in an
+otherwise-allowed command. A match here rejects the command even if the whitelist would have
+allowed it. This is <em>your</em> deny-list, layered on top of — never a replacement for — the
+hard-coded safety blocklist described below, which always applies no matter what and can't be
+edited.
+</blockquote>
+
     <p>
         <button type="button" class="usm-btn" onclick="usmLoadExample('usmBlacklistText', 'usmBlacklistExample')">Load example blacklist</button>
         <em>A starting-point set of explicit denials for things worth blocking even under an
@@ -552,60 +499,65 @@ textarea.usm-list {
 \bpasswd\b
 \bssh-keygen\b</pre>
 
-    <div class="usm-card-header" style="margin-top:16px;border-top:1px solid var(--usm-card-border);padding-top:12px;border-bottom:none;">
-        <h3 style="font-size:0.95em;">What's in the hard-coded safety blocklist?</h3>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-hardblock')" title="Show details">?</button>
-    </div>
-    <div id="usm-help-hardblock" class="usm-help-text">
-        Checked first, before your whitelist or blacklist, and can never be disabled, edited, or
-        overridden &mdash; not even by "Allow all commands" above. It targets operations that
-        would destroy the array, the boot device, or the filesystem wholesale:
-        <ul style="margin:6px 0 0 18px;padding:0;">
-            <li>Direct writes to a raw block device (<code>/dev/sd*</code>, <code>/dev/nvme*</code>,
-                <code>/dev/md*</code>, <code>/dev/hd*</code>, <code>/dev/xvd*</code>) via
-                <code>dd</code>, shell redirection, <code>tee</code>, <code>cp</code>,
-                <code>install</code>, <code>rsync</code>, or <code>dcfldd</code></li>
-            <li><code>mkfs</code>, <code>wipefs</code>, <code>shred</code>, and
-                <code>blkdiscard</code> against a block device</li>
-            <li>Destructive Unraid array commands (<code>mdcmd stop</code>,
-                <code>mdcmd nocheck</code>, <code>mdcmd clear</code>)</li>
-            <li>Recursively deleting <code>/</code> or everything under it &mdash;
-                <code>rm -rf /</code> and equivalents, including long-form flags like
-                <code>rm --recursive --force /</code> in any order</li>
-            <li>Classic shell fork bombs</li>
-        </ul>
-        It's a backstop for catastrophic mistakes, not a substitute for a narrow whitelist &mdash;
-        plenty of things that aren't wholesale destruction (like overwriting an important config
-        file, or a container's data) are still worth keeping out of your whitelist or explicitly
-        denying above.
-    </div>
+    <p style="margin-top:16px;"><strong>What's in the hard-coded safety blocklist?</strong> Checked
+       first, before your whitelist or blacklist, and can never be disabled, edited, or overridden
+       &mdash; not even by "Allow all commands" above. It targets operations that would destroy
+       the array, the boot device, or the filesystem wholesale:</p>
+    <ul style="margin:6px 0 12px 18px;padding:0;">
+        <li>Direct writes to a raw block device (<code>/dev/sd*</code>, <code>/dev/nvme*</code>,
+            <code>/dev/md*</code>, <code>/dev/hd*</code>, <code>/dev/xvd*</code>) via
+            <code>dd</code>, shell redirection, <code>tee</code>, <code>cp</code>,
+            <code>install</code>, <code>rsync</code>, or <code>dcfldd</code></li>
+        <li><code>mkfs</code>, <code>wipefs</code>, <code>shred</code>, and
+            <code>blkdiscard</code> against a block device</li>
+        <li>Destructive Unraid array commands (<code>mdcmd stop</code>,
+            <code>mdcmd nocheck</code>, <code>mdcmd clear</code>)</li>
+        <li>Recursively deleting <code>/</code> or everything under it &mdash;
+            <code>rm -rf /</code> and equivalents, including long-form flags like
+            <code>rm --recursive --force /</code> in any order</li>
+        <li>Classic shell fork bombs</li>
+    </ul>
+    <p><em>It's a backstop for catastrophic mistakes, not a substitute for a narrow whitelist —
+       plenty of things that aren't wholesale destruction (like overwriting an important config
+       file, or a container's data) are still worth keeping out of your whitelist or explicitly
+       denying above.</em></p>
 </div>
 
 <div class="usm-card usm-section">
     <div class="usm-card-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3a7 7 0 0 0-7 7c0 4 3 6 7 11 4-5 7-7 7-11a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="10" r="2.4" stroke="currentColor" stroke-width="2"/></svg>
         <h3>Remote access</h3>
-        <button type="button" class="usm-help-btn" onclick="usmToggleHelp('usm-help-tunnel')" title="What are these options?">?</button>
     </div>
-    <div id="usm-help-tunnel" class="usm-help-text">
-        All three run <code>cloudflared</code> to get a public HTTPS URL without opening a port
-        on your router. <strong>Off</strong> means the server is only reachable on your LAN at
-        <code>http://&lt;unraid-ip&gt;:8483</code>. <strong>Quick</strong> needs no Cloudflare
-        account but the hostname is random and changes every restart &mdash; fine for a quick
-        test, not for a client you'll reconnect to later. <strong>Authorized</strong> and
-        <strong>Managed</strong> both give a stable hostname you choose; the difference is only
-        who sets the tunnel up &mdash; this plugin does it for you (Authorized, via one
-        click-to-approve step), or you do it yourself first in Cloudflare's dashboard (Managed,
-        via a pasted token). The fields below change depending on which one you pick.
-    </div>
-    <p>Tunnel mode:
-        <select name="tunnelMode" id="usmTunnelMode" onchange="usmUpdateTunnelFields()">
-            <option value="off" <?= $tunnelMode === 'off' ? 'selected' : '' ?>>Off</option>
-            <option value="quick" <?= $tunnelMode === 'quick' ? 'selected' : '' ?>>Quick tunnel (ephemeral trycloudflare.com URL, no account needed)</option>
-            <option value="local" <?= $tunnelMode === 'local' ? 'selected' : '' ?>>Authorized tunnel (stable hostname &mdash; click a link to authorize with your Cloudflare account, no dashboard setup needed)</option>
-            <option value="named" <?= $tunnelMode === 'named' ? 'selected' : '' ?>>Managed tunnel (stable hostname &mdash; paste a token you created yourself in the Cloudflare Zero Trust dashboard)</option>
-        </select>
-    </p>
+
+_(Tunnel mode)_:
+: <select name="tunnelMode" id="usmTunnelMode" onchange="usmUpdateTunnelFields()">
+  <?=(function() use ($tunnelMode) {
+        $opts = [
+            'off'   => 'Off',
+            'quick' => 'Quick tunnel (ephemeral trycloudflare.com URL, no account needed)',
+            'local' => 'Authorized tunnel (stable hostname — click a link to authorize with your Cloudflare account, no dashboard setup needed)',
+            'named' => 'Managed tunnel (stable hostname — paste a token you created yourself in the Cloudflare Zero Trust dashboard)',
+        ];
+        $html = '';
+        foreach ($opts as $value => $label) {
+            $sel = $tunnelMode === $value ? ' selected' : '';
+            $html .= '<option value="' . $value . '"' . $sel . '>' . htmlspecialchars($label) . '</option>';
+        }
+        return $html;
+    })()?>
+  </select>
+
+<blockquote class="inline_help">
+All four run <code>cloudflared</code> to get a public HTTPS URL without opening a port on your
+router (except Off, which stays LAN-only). <strong>Off</strong> means the server is only
+reachable on your LAN at <code>http://&lt;unraid-ip&gt;:8483</code>. <strong>Quick</strong> needs
+no Cloudflare account but the hostname is random and changes every restart — fine for a quick
+test, not for a client you'll reconnect to later. <strong>Authorized</strong> and
+<strong>Managed</strong> both give a stable hostname you choose; the difference is only who sets
+the tunnel up — this plugin does it for you (Authorized, via one click-to-approve step), or you
+do it yourself first in Cloudflare's dashboard (Managed, via a pasted token). The fields below
+change depending on which one you pick.
+</blockquote>
 
     <div data-usm-modes="local">
         <p><em>Enter the hostname you want below, save, then start the tunnel &mdash; an
@@ -626,16 +578,26 @@ textarea.usm-list {
     </div>
 
     <div data-usm-modes="local named">
-        <p>Hostname &mdash; the <strong>full</strong> hostname you'll actually connect to, subdomain
-           and root domain together (e.g. <code>mcp.example.com</code>, not just <code>mcp</code>),
-           on a domain already using Cloudflare for its DNS:<br>
-            <input type="text" name="cloudflareTunnelHostname" value="<?= htmlspecialchars($cfHostname) ?>" style="width:100%;max-width:640px;font-family:monospace" placeholder="mcp.example.com">
-        </p>
+
+_(Hostname)_:
+: <input type="text" name="cloudflareTunnelHostname" value="<?= htmlspecialchars($cfHostname) ?>" style="width:100%;max-width:640px;font-family:monospace" placeholder="mcp.example.com">
+
+<blockquote class="inline_help">
+The <strong>full</strong> hostname you'll actually connect to, subdomain and root domain
+together (e.g. <code>mcp.example.com</code>, not just <code>mcp</code>), on a domain already
+using Cloudflare for its DNS.
+</blockquote>
+
     </div>
     <div data-usm-modes="named">
-        <p>Cloudflare tunnel token (Zero Trust dashboard):<br>
-            <input type="password" name="cloudflareTunnelToken" value="<?= htmlspecialchars($cfToken) ?>" style="width:100%;max-width:640px;font-family:monospace">
-        </p>
+
+_(Cloudflare tunnel token)_:
+: <input type="password" name="cloudflareTunnelToken" value="<?= htmlspecialchars($cfToken) ?>" style="width:100%;max-width:640px;font-family:monospace">
+
+<blockquote class="inline_help">
+From the Cloudflare Zero Trust dashboard, managed mode only.
+</blockquote>
+
     </div>
 </div>
 
@@ -643,9 +605,6 @@ textarea.usm-list {
 </form>
 
 <script>
-function usmToggleHelp(id) {
-    document.getElementById(id).classList.toggle('usm-open');
-}
 function usmLoadExample(textareaId, exampleId) {
     document.getElementById(textareaId).value = document.getElementById(exampleId).textContent.trim();
 }
