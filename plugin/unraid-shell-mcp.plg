@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.6">
+<!ENTITY version     "0.1.7">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,22 @@
 
 <CHANGES>
 ##&name;
+###0.1.7
+- Settings page: the Remote access section now shows only the fields that
+  apply to the selected tunnel mode (hostname/token fields and their
+  explanations hide and show as you change the dropdown, no page reload
+  needed) instead of always showing all of them.
+- Settings page: the hostname field now says explicitly that it wants the
+  full hostname (subdomain + root domain, e.g. mcp.example.com), not just
+  the subdomain part.
+- Settings page: while an authorized-tunnel is starting up and the
+  "Authorize with Cloudflare" link hasn't appeared yet, the page now
+  refreshes itself a few times automatically so the link shows up on its
+  own instead of requiring a manual reload.
+- Fix: the composed "Public URL" / full MCP URL shown on the Settings page
+  never reflected the configured hostname for managed ("named") tunnel
+  mode, always falling back to the internal listen address instead. It now
+  shows the configured hostname there too.
 ###0.1.6
 - Add a third Cloudflare tunnel mode: "Authorized tunnel" (tunnelMode
   "local"). Enter the hostname you want, start the tunnel, and click the
