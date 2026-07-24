@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 2026.07.24 or 2026.07.24a (no leading v)"
+        description: "Version to release, e.g. 2026.07.24 or 2026.07.24.1 (no leading v)"
         required: true
         type: string
 
@@ -42,7 +42,7 @@ jobs:
           # as inert data; the regex check below then guarantees every
           # downstream `${{ steps.version.outputs.* }}` use elsewhere in this
           # workflow is safe too, since by construction it can only ever be
-          # digits, dots, and at most one trailing lowercase letter.
+          # digits and dots.
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -50,12 +50,17 @@ jobs:
           else
             version="${GITHUB_REF_NAME#v}"
           fi
-          # Date-based versions (YYYY.MM.DD, plus an optional a/b/... suffix
-          # for a second release on the same day). Unraid's plugin manager
-          # compares versions with plain strcmp, which this format survives;
-          # the old 0.1.x numeric scheme did not (0.1.10 sorted below 0.1.9).
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+[a-z]?$ ]]; then
-            echo "::error::Invalid version '$version' (expected e.g. 2026.07.24 or 2026.07.24a)"
+          # Date-based versions (YYYY.MM.DD, plus an optional numeric .N for
+          # a second release on the same day). Two different version
+          # comparisons must both accept an update: Unraid's plugin manager
+          # compares .plg versions with plain strcmp (which broke the old
+          # 0.1.x scheme: 0.1.10 sorted below 0.1.9), and its upgradepkg
+          # compares installed package names with `sort -V` (which broke a
+          # letter suffix: 2026.07.24b sorted below 2026.07.24, so the
+          # package was skipped as "newer version already installed").
+          # Digits-and-dots-only survives both; letters allowed nowhere.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid version '$version' (expected e.g. 2026.07.24 or 2026.07.24.1)"
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"

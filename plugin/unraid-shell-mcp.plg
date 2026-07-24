@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "2026.07.24b">
+<!ENTITY version     "2026.07.24.1">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,18 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24.1
+- Fix: the 2026.07.24b package never actually installed as an upgrade.
+  Unraid's upgradepkg compares package names with `sort -V`, which
+  considers a trailing letter *older* than no letter (2026.07.24b sorts
+  below 2026.07.24), so it skipped the package as "newer version already
+  installed" while the plugin still reported the new version. Same-day
+  releases now use a numeric fourth component instead (this release:
+  2026.07.24.1), which every comparison involved orders correctly. If
+  your Settings page shows version 2026.07.24b, update to this via
+  terminal once: `plugin install &lt;plg-url&gt; forced` (the b-labeled
+  .plg otherwise blocks the update); everyone else updates normally.
+  This release contains everything 2026.07.24b was supposed to deliver:
 ###2026.07.24b
 - Settings page: new "Start at boot" section with separate checkboxes for
   the MCP server and the Cloudflare tunnel (both on by default, matching
