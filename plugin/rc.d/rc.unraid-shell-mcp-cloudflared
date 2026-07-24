@@ -176,7 +176,7 @@ YAML
 
     echo "https://$hostname" >"$URLFILE"
     echo "Starting tunnel..."
-    exec env HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel --no-autoupdate run --config "$CF_CONFIG_YML" "$tunnel_id"
+    exec env HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel --no-autoupdate --config "$CF_CONFIG_YML" run "$tunnel_id"
 }
 
 start() {

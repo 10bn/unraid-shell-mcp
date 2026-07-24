@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.10">
+<!ENTITY version     "0.1.11">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,15 @@
 
 <CHANGES>
 ##&name;
+###0.1.11
+- Fix: authorized-tunnel mode ("local") exited immediately every time it
+  was started, because the final `cloudflared tunnel run` invocation
+  passed --config after the `run` subcommand instead of before it (a
+  cloudflared usage requirement, not documented anywhere obvious) — the
+  tunnel never actually stayed up, only the login/create/route steps
+  before it ever worked. No reauthorization is needed for this fix;
+  existing authorization, tunnel, and DNS routing are unaffected and are
+  reused as-is once you update.
 ###0.1.10
 - Fix: the 0.1.9 "native inline-help" conversion of the Settings page did
   not actually render on a real Unraid server — the raw dynamix template
