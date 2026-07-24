@@ -1,18 +1,17 @@
 # unraid-shell-mcp
 
-Runs a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server
-directly on a host, exposing a single `execute-command` tool that runs shell
-commands on that host — gated by a bearer token and a fail-closed command
-whitelist. Ships two ways: as a native Unraid plugin, and as a plain
-systemd service for any other Linux box.
+A native Unraid plugin that runs a [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP) server directly on the box, exposing a single `execute-command` tool
+that runs shell commands on that host — gated by a bearer token and a
+fail-closed command whitelist.
 
 Unlike an ssh-mcp-server-style setup (an MCP server on a control host that
 SSHes into the target), there is no SSH hop, no control host, no keys to
 manage: the MCP server *is* the target box.
 That also means it is the **only** line of defense between an MCP client (or
 anyone with the bearer token) and full root access to that machine — the
-array, Docker, VMs, and shares on Unraid, or just the whole filesystem on a
-generic Linux box. Read the "Security" section below before installing this.
+array, Docker, VMs, and shares. Read the "Security" section below before
+installing this.
 
 ## Install on Unraid
 
@@ -36,91 +35,6 @@ generic Linux box. Read the "Security" section below before installing this.
    Settings page shows this exact URL ready to copy. See "Two ways to
    authenticate" below.
 
-## Install on generic Linux (systemd)
-
-Not on Unraid? `install.sh` installs the same binary as a systemd service on
-any `amd64`/`arm64` Linux host:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/10bn/unraid-shell-mcp/main/install.sh | sudo bash
-```
-
-This downloads the latest release's binary for your architecture and installs
-it to `/usr/local/bin/unraid-shell-mcp`. On a fresh install (no config.json
-yet) it then walks you through **every setting config.json holds**, one
-prompt at a time — press Enter to accept the default shown in `[brackets]`:
-
-- listen address
-- bearer token (blank to auto-generate a random one — recommended; there is
-  no default token either way)
-- command whitelist entries (blank line to stop adding more; leaving it
-  empty means no commands can run until you add one later)
-- command blacklist entries (same, optional)
-- whether to enable `allowAllCommands` (asks you to type `yes` to confirm —
-  see the Security section on what this means)
-- Cloudflare tunnel mode (`off`/`quick`/`named`) and, for `named`, the
-  Cloudflare tunnel token/hostname
-
-It then writes `/etc/unraid-shell-mcp/config.json` (`0600`) with your
-answers, writes a `unraid-shell-mcp.service` unit to `/etc/systemd/system/`,
-installs `cloudflared` and a second service, `unraid-shell-mcp-cloudflared`,
-that acts on whatever `tunnelMode` you chose (harmless and idle if you left
-it `off`, the default — see "Cloudflare tunnel" below), and starts both.
-The bearer token is printed to your terminal at the end — copy it now, since
-nothing else displays it again (there's no webGUI outside Unraid).
-
-Running it non-interactively (no terminal attached, e.g. from another
-script) or with `NONINTERACTIVE=1` skips all of the above and falls back to
-the same fail-closed defaults as before: empty whitelist, `tunnelMode off`,
-random token. **Re-running the installer never touches an existing
-config.json** — if one is already there, none of this is asked again and
-your settings are left exactly as they are; edit the file directly and
-restart the relevant service instead:
-
-```sh
-sudo systemctl restart unraid-shell-mcp
-```
-
-Useful commands:
-
-```sh
-sudo systemctl status unraid-shell-mcp   # check it's running
-sudo journalctl -u unraid-shell-mcp -f   # follow logs
-sudo ./uninstall.sh                      # remove binary + service (keeps config)
-sudo ./uninstall.sh --purge              # also delete the config (token, whitelist)
-```
-
-Install a specific version instead of latest, override install paths, or
-force a non-interactive install with defaults:
-
-```sh
-VERSION=v0.2.0 INSTALL_DIR=/opt/bin CONFIG_DIR=/opt/etc/unraid-shell-mcp NONINTERACTIVE=1 \
-  curl -fsSL https://raw.githubusercontent.com/10bn/unraid-shell-mcp/main/install.sh | sudo -E bash
-```
-
-This path is fully independent of the Unraid plugin — no rc.d, no `.txz`, no
-webGUI — but it is functionally equivalent for the Cloudflare tunnel piece.
-
-### Cloudflare tunnel (generic Linux)
-
-By default `tunnelMode` is `"off"` and `unraid-shell-mcp-cloudflared` idles.
-To expose the server, edit `/etc/unraid-shell-mcp/config.json`:
-
-```sh
-sudo systemctl stop unraid-shell-mcp-cloudflared   # not required, but avoids a
-                                                    # half-started tunnel while editing
-sudo nano /etc/unraid-shell-mcp/config.json         # set tunnelMode to "quick" or "named"
-sudo systemctl restart unraid-shell-mcp-cloudflared
-sudo journalctl -u unraid-shell-mcp-cloudflared -f  # watch it come up
-```
-
-- `"quick"`: no Cloudflare account needed; an ephemeral `*.trycloudflare.com`
-  URL is assigned each time the service starts. It's printed in the journal
-  and also written to `/run/unraid-shell-mcp-cloudflared-url`.
-- `"named"`: set `cloudflareTunnelToken` (from the Cloudflare Zero Trust
-  dashboard) and `cloudflareTunnelHostname` in config.json first — this gets
-  you a stable hostname instead of a random one.
-
 ## Two ways to authenticate
 
 Every request needs the bearer token one way or another; there's no
@@ -133,9 +47,9 @@ your MCP client's UI can configure:
   select "no authentication" (or leave auth unconfigured) — the token
   travels in the path rather than a header, for clients whose UI only
   accepts a URL with no way to add a custom header. It's the exact same
-  secret either way, just carried differently; the Settings page (Unraid)
-  shows this full URL pre-composed with the tunnel hostname and token
-  already filled in, ready to paste.
+  secret either way, just carried differently; the Settings page shows this
+  full URL pre-composed with the tunnel hostname and token already filled
+  in, ready to paste.
 
 The tradeoff: URLs are more likely than headers to end up somewhere you
 didn't intend — browser history, a reverse proxy's access log, a screenshot.
@@ -144,9 +58,8 @@ Prefer the header form when you can; use the URL form when you can't.
 ## Security
 
 **Whoever holds the bearer token gets full shell access to this machine** —
-on Unraid that's the array, Docker, VMs, every share; on generic Linux it's
-whatever that user account (this runs as `root` by default) can reach. Treat
-the token like a root password, because it effectively is one.
+the array, Docker, VMs, every share. Treat the token like a root password,
+because it effectively is one.
 
 - **Fail closed by default.** With an empty `commandWhitelist`, every
   `execute-command` call is rejected. There is no "empty whitelist = allow
@@ -160,12 +73,9 @@ the token like a root password, because it effectively is one.
   order — and the hard blocklist cannot be overridden by your whitelist, even
   a maximally permissive one.
 - **The bearer token is generated randomly on first run.** There is no
-  default token. Rotate it any time from the Settings page (Unraid) or by
-  editing `bearerToken` in `config.json` and restarting the service
-  (generic Linux).
-- **`config.json` is written with `0600` permissions.** On Unraid it's never
-  served by the webGUI without going through Unraid's own authenticated
-  session; on generic Linux, nothing but the service itself and root reads it.
+  default token. Rotate it any time from the Settings page.
+- **`config.json` is written with `0600` permissions**, and is never served
+  by the webGUI without going through Unraid's own authenticated session.
 - **Whitelist patterns must match the entire command, not just a prefix.**
   Commands run via `/bin/sh -c <command>`, so a pattern like `^echo\b` under
   ordinary "appears somewhere in the string" regex matching would also
@@ -191,15 +101,14 @@ the token like a root password, because it effectively is one.
   file).
 - **Every invocation is audit-logged** as a structured JSON line on stdout —
   the command text, outcome (`success`/`rejected`/`timeout`/`output_cap`/
-  `error`), exit code, and duration — captured by the rc.d log file on
-  Unraid and by `journalctl` under systemd, with no extra configuration.
-- **If you expose this outside your LAN** (e.g. via the Unraid plugin's
-  built-in Cloudflare tunnel, or your own reverse proxy in front of the
-  generic-Linux install), **put it behind
+  `error`), exit code, and duration — captured by the rc.d log file, with no
+  extra configuration.
+- **If you expose this outside your LAN** (e.g. via the plugin's built-in
+  Cloudflare tunnel), **put it behind
   [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)**
   or equivalent so requests need an authenticated identity in addition to the
-  bearer token. A tunnel or reverse proxy alone only gets you a routable
-  hostname, not authorization.
+  bearer token. A tunnel alone only gets you a routable hostname, not
+  authorization.
 
 If any of that is more risk than you want to take on, don't install this —
 a curated, capability-scoped API (not free shell access) would be the safer
@@ -237,19 +146,11 @@ choice, and is intentionally not what this project provides.
   the bearer/path token is the real access control here, not the `Host`
   header.
 - An optional `cloudflared` tunnel (quick or named mode) exposes the server
-  publicly. On both install paths, a small wrapper reads tunnel settings from
-  the same config file via `unraid-shell-mcp config-get <field>` (no JSON
+  publicly. `rc.unraid-shell-mcp-cloudflared` reads tunnel settings from the
+  same config file via `unraid-shell-mcp config-get <field>` (no JSON
   tooling needed in the shell script) and, in quick mode, parses the
-  ephemeral `*.trycloudflare.com` URL out of the cloudflared log — on Unraid
-  that's `rc.unraid-shell-mcp-cloudflared`, writing the URL to
-  `/var/run/unraid-shell-mcp-cloudflared-url.txt` for the Settings page; on
-  generic Linux it's the `unraid-shell-mcp-cloudflared` systemd service
-  install.sh sets up, writing the URL to
-  `/run/unraid-shell-mcp-cloudflared-url` and to its own journal.
-- On generic Linux, `install.sh` installs the binary + a systemd unit pointed
-  at `/etc/unraid-shell-mcp/config.json`, plus the cloudflared tunnel service
-  above; there's no rc.d, no `.txz`, no webGUI — edit the config file by hand
-  and `systemctl restart` the relevant service to pick up changes.
+  ephemeral `*.trycloudflare.com` URL out of the cloudflared log, writing it
+  to `/var/run/unraid-shell-mcp-cloudflared-url.txt` for the Settings page.
 
 ## Repository layout
 
@@ -264,10 +165,7 @@ plugin/
   package/                Slackware package skeleton + Makefile (makepkg)
   rc.d/                   rc.unraid-shell-mcp, rc.unraid-shell-mcp-cloudflared
 webgui/UnraidShellMcp.page  Settings page (token, whitelist, tunnel, status)
-install.sh                generic-Linux systemd installer
-uninstall.sh              removes the install.sh install
-contrib/systemd/          reference copies of the systemd units/scripts install.sh generates
-.github/workflows/release.yml  builds + publishes .txz/.plg/tarballs on tag push
+.github/workflows/release.yml  builds + publishes the .txz/.plg on tag push
 config.example.json
 ```
 
@@ -310,28 +208,13 @@ go run ./cmd/unraid-shell-mcp -config ./config.example.json -listen 127.0.0.1:84
   It has not been installed on an actual Unraid boot device.
 - **cloudflared itself has not been exercised end-to-end by this project's own
   development environment** (its sandboxed network policy blocks fetching the
-  `cloudflared` binary directly). The quick/named-mode logic in both
-  `rc.unraid-shell-mcp-cloudflared` (Unraid) and `unraid-shell-mcp-cloudflared`
-  (generic Linux) — mode switching, URL-file writing, clean process teardown,
-  no leaked child processes — was verified against a fake `cloudflared`
-  binary that reproduces the real log format. It has since been confirmed
-  installing correctly (binary downloaded, service enabled) on a real Debian
-  host outside this sandbox; running an actual tunnel end-to-end there is
-  still unverified.
-- **`install.sh` has been run for real** against the project's own published
-  GitHub release (not just a mocked one): downloading the actual release
-  tarball, installing the binary, generating `config.json` with correct
-  `0600` permissions, and confirming bearer-token auth against the installed
-  binary. It has also been run successfully on a real systemd host (Debian)
-  outside this sandbox, including the `systemctl enable --now` path this
-  sandbox itself can't exercise (no running systemd instance here). The
-  interactive first-run prompts (listen address, whitelist/blacklist entries,
-  `allowAllCommands`, tunnel mode, JSON escaping of special characters in
-  patterns) were exercised end-to-end against a real pseudo-terminal in this
-  sandbox — necessary because these prompts read from `/dev/tty`, not stdin,
-  so they can't be driven by ordinary piped input — confirming the generated
-  `config.json` matched the answers exactly and that the installed binary
-  enforced them correctly (auth, whitelist/blacklist, `allowAllCommands`) on
-  first start.
+  `cloudflared` binary directly, and blocks reaching `*.trycloudflare.com`
+  URLs to test a live tunnel). The quick/named-mode logic in
+  `rc.unraid-shell-mcp-cloudflared` — mode switching, URL-file writing, clean
+  process teardown, no leaked child processes — was verified against a fake
+  `cloudflared` binary that reproduces the real log format, and the
+  loopback-Host-header interaction with a real tunnel was diagnosed and
+  fixed based on a live user report, but end-to-end tunnel behavior has not
+  been directly exercised from this sandbox.
 - No Unraid Community Applications submission — install via the raw `.plg`
   URL above only.
