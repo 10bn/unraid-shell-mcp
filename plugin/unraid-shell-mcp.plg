@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "2026.07.24">
+<!ENTITY version     "2026.07.24a">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,11 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24a
+- The installer now deletes package files left behind by older versions
+  (each update previously left its ~2.5 MB .txz on the boot USB forever;
+  only the currently installed version's package is kept now). Config,
+  bearer token, and Cloudflare tunnel state are untouched by this.
 ###2026.07.24
 - Switch to date-based versioning (YYYY.MM.DD, with an a/b/... suffix if
   there's ever a second release on the same day). Unraid's plugin manager
@@ -216,6 +221,17 @@ fi
 
 mkdir -p &plgPATH;
 upgradepkg --install-new &plgPATH;/&plgNAME;.txz
+
+# Package files from older versions otherwise pile up on the boot USB
+# forever (one .txz per update, ~2.5 MB each); keep only the version just
+# installed.
+for f in &plgPATH;/&name;-*-x86_64-1.txz; do
+    if [ -e "$f" ]; then
+        if [ "$f" != "&plgPATH;/&plgNAME;.txz" ]; then
+            rm -f "$f" "$f.md5"
+        fi
+    fi
+done
 
 chmod 0755 &rcMCP; &rcCF; 2>/dev/null || true
 
