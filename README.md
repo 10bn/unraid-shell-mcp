@@ -228,6 +228,14 @@ choice, and is intentionally not what this project provides.
 - Configuration lives at `/boot/config/plugins/unraid-shell-mcp/config.json`
   (persists across reboots, since Unraid boots from a RAM overlay and only
   `/boot` is durable). See `config.example.json` for the shape.
+- The MCP library's loopback DNS-rebinding protection (rejecting requests
+  whose `Host` header isn't a localhost value) is disabled: cloudflared
+  forwards tunneled requests to our `127.0.0.1` listener while preserving the
+  original public hostname in `Host`, which that protection would otherwise
+  reject outright. It's a mitigation for local desktop MCP servers reachable
+  by a user's own browser, which doesn't apply to this headless-NAS setup;
+  the bearer/path token is the real access control here, not the `Host`
+  header.
 - An optional `cloudflared` tunnel (quick or named mode) exposes the server
   publicly. On both install paths, a small wrapper reads tunnel settings from
   the same config file via `unraid-shell-mcp config-get <field>` (no JSON

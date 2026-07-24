@@ -67,7 +67,17 @@ func main() {
 
 	auditLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	mcpSrv := mcp.New(matcher, auditLogger)
-	streamable := mcpserver.NewStreamableHTTPServer(mcpSrv)
+	// mcp-go's streamable HTTP transport rejects (403) any request arriving
+	// over a loopback connection whose Host header isn't a localhost value,
+	// as DNS-rebinding protection for local desktop MCP servers reachable by
+	// a user's own browser. That threat model doesn't apply here: this is a
+	// headless NAS service, cloudflared forwards tunnel traffic to our
+	// 127.0.0.1 listener while preserving the original public Host header,
+	// and the real access control is the bearer/path token, not the Host
+	// header. Left enabled, this silently 403s every request that comes in
+	// through the tunnel (quick or named) with no useful error, whatever the
+	// client.
+	streamable := mcpserver.NewStreamableHTTPServer(mcpSrv, mcpserver.WithDisableLocalhostProtection(true))
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", auth.Middleware(cfg.BearerToken, streamable))
