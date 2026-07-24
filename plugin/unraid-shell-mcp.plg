@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "0.1.4">
+<!ENTITY version     "0.1.5">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,24 @@
 
 <CHANGES>
 ##&name;
+###0.1.5
+- Security: closed two hard-blocklist gaps found in a follow-up review.
+  The "recursive force delete of root" rule only recognized short combined
+  flags (-rf, -fr, ...); `rm --recursive --force /` (GNU long options, any
+  order) passed through unblocked. Raw block-device writes via `tee`,
+  `cp`, `install`, `rsync`, and `dcfldd` were also uncovered (only
+  dd/redirection/mkfs/wipefs/shred/blkdiscard were). Both are now blocked
+  regardless of flag form or order. This matters most whenever
+  allowAllCommands is enabled, since the hard blocklist is then the only
+  remaining defense.
+- Security: fixed a GitHub Actions script-injection pattern in the release
+  workflow (a workflow_dispatch input was interpolated directly into a
+  shell script instead of passed through env). Doesn't affect the running
+  plugin, only how releases are built.
+- Settings page: visual redesign — card-style sections, a status badge for
+  the MCP server/tunnel (running/stopped), and a small icon next to the
+  plugin title. No functional changes: every field, button, and form still
+  does exactly what it did before.
 ###0.1.4
 - Fix: every request forwarded through the Cloudflare tunnel (quick or
   named) was silently rejected with 403 Forbidden. The MCP library's

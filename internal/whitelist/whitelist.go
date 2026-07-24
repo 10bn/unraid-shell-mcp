@@ -40,9 +40,18 @@ import (
 // These target operations that would destroy the array, the boot device,
 // or the filesystem wholesale.
 var hardBlocklistPatterns = []string{
-	// Direct writes to block devices (disks, array members, cache, USB boot).
+	// Direct writes to block devices (disks, array members, cache, USB boot),
+	// via the usual suspects: dd, shell redirection, mkfs, and other
+	// utilities whose job is (or can be used as) writing arbitrary data to
+	// a raw device path.
 	`\bdd\b.*\bof=\s*/dev/(sd|nvme|md|hd|xvd)`,
+	`\bdcfldd\b`,
 	`>\s*/dev/(sd|nvme|md|hd|xvd)[a-z0-9]*\b`,
+	`\btee\b.*\s/dev/(sd|nvme|md|hd|xvd)[a-z0-9]*\b`,
+	`\bcp\b.*\s/dev/(sd|nvme|md|hd|xvd)[a-z0-9]*\s*($|[;&|])`,
+	`\binstall\b.*\s/dev/(sd|nvme|md|hd|xvd)[a-z0-9]*\b`,
+	`\brsync\b.*\s/dev/(sd|nvme|md|hd|xvd)[a-z0-9]*\b`,
+	`\bsocat\b.*/dev/(sd|nvme|md|hd|xvd)[a-z0-9]*\b`,
 	`\bmkfs(\.\S+)?\s+.*/dev/(sd|nvme|md|hd|xvd)`,
 	`\bwipefs\b`,
 	`\bshred\b.*/dev/(sd|nvme|md|hd|xvd)`,
@@ -51,12 +60,58 @@ var hardBlocklistPatterns = []string{
 	// triggering a parity rebuild from a shell command bypasses the
 	// safety checks the webGUI performs.
 	`\bmdcmd\b\s+(stop|nocheck|clear)`,
-	// Recursive force-delete of root or wide, unqualified filesystem roots.
-	`\brm\s+.*-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+/\s*($|[;&|])`,
-	`\brm\s+.*-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+/\s*($|[;&|])`,
-	`\brm\s+.*-[a-zA-Z]*r[a-zA-Z]*\s+/\*`,
-	`\brm\s+.*--no-preserve-root`,
 	`:\(\)\s*\{\s*:\|\s*:\s*&\s*\}\s*;\s*:`, // fork bomb
+}
+
+// rmInvocation finds each "rm ..." invocation within a command, scoped to
+// the next shell separator, so a multi-command line is checked segment by
+// segment rather than treating the whole line as one bag of flags.
+var rmInvocation = regexp.MustCompile(`\brm\b[^;&|\n]*`)
+
+// rmRecursiveFlag and rmForceFlag detect a recursive/force flag in any of
+// its forms: a short combined cluster (-r, -rf, -fr, -Rf, ...) or the GNU
+// long option (--recursive, --force). Go's regexp (RE2) has no lookahead,
+// so "contains a recursive flag AND a force flag AND a destructive target"
+// can't be expressed as a single pattern the way the hard blocklist's other
+// entries are; checking each condition independently against the same
+// rm-scoped segment gets the same effect. This also closes a gap the
+// previous single combined-cluster regex had: it only matched short options
+// like -rf/-fr, so `rm --recursive --force /` (functionally identical to
+// `rm -rf /`) passed through unblocked.
+var rmRecursiveFlag = regexp.MustCompile(`-[a-zA-Z]*[rR][a-zA-Z]*\b|--recursive\b`)
+var rmForceFlag = regexp.MustCompile(`-[a-zA-Z]*f[a-zA-Z]*\b|--force\b`)
+var rmNoPreserveRoot = regexp.MustCompile(`--no-preserve-root\b`)
+
+// rmBareRootTarget matches a bare "/" as a standalone argument (not merely
+// a path that starts with "/", like "/mnt/user/tmp").
+var rmBareRootTarget = regexp.MustCompile(`(^|\s)/(\s|$)`)
+
+// rmWildcardRootTarget matches "/*" as a standalone argument. Unlike a bare
+// "/" (which GNU coreutils' rm refuses to touch unless --no-preserve-root
+// is also given, as a built-in safety net independent of this blocklist),
+// "/*" is expanded by the shell into a list of top-level directories before
+// rm ever sees it, so that built-in protection does not apply — recursively
+// deleting it is exactly as destructive with or without an explicit force
+// flag, since a non-interactive rm proceeds without prompting regardless
+// once given -r.
+var rmWildcardRootTarget = regexp.MustCompile(`(^|\s)/\*(\s|$)`)
+
+// isRecursiveForceRootDelete reports whether command contains an "rm"
+// invocation that would recursively wipe out "/" or everything under it,
+// regardless of flag order or short-vs-long-option form.
+func isRecursiveForceRootDelete(command string) bool {
+	for _, seg := range rmInvocation.FindAllString(command, -1) {
+		if !rmRecursiveFlag.MatchString(seg) {
+			continue
+		}
+		if rmWildcardRootTarget.MatchString(seg) {
+			return true
+		}
+		if rmBareRootTarget.MatchString(seg) && (rmForceFlag.MatchString(seg) || rmNoPreserveRoot.MatchString(seg)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Matcher evaluates commands against the hard blocklist plus a
@@ -107,6 +162,9 @@ func compileAll(patterns []string) ([]*regexp.Regexp, error) {
 
 // Allowed reports whether command may be executed, and if not, why.
 func (m *Matcher) Allowed(command string) (bool, string) {
+	if isRecursiveForceRootDelete(command) {
+		return false, "blocked by hard-coded safety rule (non-configurable)"
+	}
 	for _, re := range m.hardBlocklist {
 		if re.MatchString(command) {
 			return false, "blocked by hard-coded safety rule (non-configurable)"
