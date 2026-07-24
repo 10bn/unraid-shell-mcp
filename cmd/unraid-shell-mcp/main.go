@@ -34,6 +34,18 @@ var configGetFields = map[string]func(*config.Config) string{
 	"tunnelMode":               func(c *config.Config) string { return string(c.TunnelMode) },
 	"cloudflareTunnelToken":    func(c *config.Config) string { return c.CloudflareTunnelToken },
 	"cloudflareTunnelHostname": func(c *config.Config) string { return c.CloudflareTunnelHostname },
+	"autostartMcp":             func(c *config.Config) string { return formatOptBool(c.AutostartMcp) },
+	"autostartTunnel":          func(c *config.Config) string { return formatOptBool(c.AutostartTunnel) },
+}
+
+// formatOptBool prints an autostart flag for shell consumption. config.Load
+// normalizes these pointers to non-nil, but stay defensive: nil means the
+// field predates this version, whose behavior was always-start.
+func formatOptBool(v *bool) string {
+	if v == nil || *v {
+		return "true"
+	}
+	return "false"
 }
 
 func main() {

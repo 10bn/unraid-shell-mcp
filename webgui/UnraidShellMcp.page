@@ -54,6 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $cfg !== null) {
         $cfg['commandWhitelist'] = usm_lines_to_list($_POST['commandWhitelist'] ?? '');
         $cfg['commandBlacklist'] = usm_lines_to_list($_POST['commandBlacklist'] ?? '');
         $cfg['allowAllCommands'] = isset($_POST['allowAllCommands']);
+        $cfg['autostartMcp'] = isset($_POST['autostartMcp']);
+        $cfg['autostartTunnel'] = isset($_POST['autostartTunnel']);
         $tunnelMode = $_POST['tunnelMode'] ?? 'off';
         $cfg['tunnelMode'] = in_array($tunnelMode, ['off', 'quick', 'named', 'local'], true) ? $tunnelMode : 'off';
         $cfg['cloudflareTunnelToken'] = trim($_POST['cloudflareTunnelToken'] ?? '');
@@ -92,6 +94,10 @@ $loginUrl  = file_exists($loginUrlFile) ? trim(file_get_contents($loginUrlFile))
 $whitelistText    = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []) : "";
 $blacklistText    = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
 $allowAllCommands = !empty($cfg['allowAllCommands']);
+// Default to enabled when the field is absent (config predating the
+// autostart toggles), matching how the Go side and event/started treat it.
+$autostartMcp    = $cfg !== null ? (!array_key_exists('autostartMcp', $cfg) || !empty($cfg['autostartMcp'])) : true;
+$autostartTunnel = $cfg !== null ? (!array_key_exists('autostartTunnel', $cfg) || !empty($cfg['autostartTunnel'])) : true;
 $tunnelMode       = $cfg['tunnelMode'] ?? 'off';
 $cfToken          = $cfg['cloudflareTunnelToken'] ?? '';
 $cfHostname       = $cfg['cloudflareTunnelHostname'] ?? '';
@@ -514,6 +520,29 @@ textarea.usm-list {
        plenty of things that aren't wholesale destruction (like overwriting an important config
        file, or a container's data) are still worth keeping out of your whitelist or explicitly
        denying above.</em></p>
+</div>
+
+<div class="usm-card usm-section">
+    <div class="usm-card-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3v9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6.6 5.6a8 8 0 1 0 10.8 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <h3>Start at boot</h3>
+    </div>
+    <p>
+        <label>
+            <input type="checkbox" name="autostartMcp" <?= $autostartMcp ? 'checked' : '' ?>>
+            Start the MCP server automatically when the array comes up
+        </label>
+    </p>
+    <p>
+        <label>
+            <input type="checkbox" name="autostartTunnel" <?= $autostartTunnel ? 'checked' : '' ?>>
+            Start the Cloudflare tunnel automatically when the array comes up
+        </label>
+    </p>
+    <p><em>Both are on by default, and apply after every reboot and manual array start. The
+       tunnel checkbox only matters when a tunnel mode is selected below &mdash; with tunnel
+       mode Off nothing is started either way. Unchecking these doesn't stop anything that's
+       already running; use the Stop buttons in the Status section above for that.</em></p>
 </div>
 
 <div class="usm-card usm-section">

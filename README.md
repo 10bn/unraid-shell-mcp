@@ -40,7 +40,9 @@ installing this.
    the URL) and select "no authentication" — the Settings page shows this
    exact URL ready to copy. See "Two ways to authenticate" below.
 6. Both the MCP server and (if configured) the tunnel start automatically
-   when the array comes up after a reboot — no manual start needed.
+   when the array comes up after a reboot — no manual start needed. Each
+   has its own "Start at boot" checkbox on the Settings page if you'd
+   rather start one (or both) by hand.
 
 ## Two ways to authenticate
 
@@ -215,10 +217,13 @@ choice, and is intentionally not what this project provides.
 - **Boot-time autostart**: `plugin/event/started` is installed into the
   plugin's `event/` directory, which Unraid's `emhttp_event` runs
   automatically once the array has finished starting (every boot, and
-  after any manual array stop/start). It just calls both rc.d scripts'
-  `start` — each safely no-ops if already running, and the tunnel one
-  no-ops when `tunnelMode` is `off` — so the MCP server and tunnel come
-  back up on their own after a reboot.
+  after any manual array stop/start). It calls each rc.d script's `start`
+  gated on its own Settings-page toggle (`autostartMcp` /
+  `autostartTunnel` in config.json, both on by default; a config file
+  predating the toggles behaves as "on"). Each script safely no-ops if
+  already running, and the tunnel one no-ops when `tunnelMode` is `off` —
+  so with the toggles on, the MCP server and tunnel come back up on their
+  own after a reboot.
 
 ## Repository layout
 
