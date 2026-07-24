@@ -4,9 +4,31 @@
   "commandWhitelist": [
     "^uptime$",
     "^df -h$",
-    "^docker ps$"
+    "^free -h$",
+    "^docker ps$",
+    "^docker ps -a$",
+    "^docker logs --tail 200 [a-zA-Z0-9_.-]+$",
+    "^docker stats --no-stream$",
+    "^docker inspect [a-zA-Z0-9_.-]+$",
+    "^cat /proc/mdstat$",
+    "^mdcmd status$",
+    "^ls -la /mnt/user$",
+    "^ls -la /mnt/user/[a-zA-Z0-9 _./-]+$",
+    "^du -sh /mnt/user/[a-zA-Z0-9 _./-]+$",
+    "^smartctl -a /dev/sd[a-z][0-9]*$",
+    "^smartctl -a /dev/nvme[0-9]n[0-9]$",
+    "^journalctl -n 200$"
   ],
-  "commandBlacklist": [],
+  "commandBlacklist": [
+    "\\breboot\\b",
+    "\\bpoweroff\\b",
+    "\\bshutdown\\b",
+    "\\bdocker\\s+(rm|stop|kill|restart|rmi)\\b",
+    "\\bdocker\\s+system\\s+prune\\b",
+    "\\biptables\\b",
+    "\\bpasswd\\b",
+    "\\bssh-keygen\\b"
+  ],
   "allowAllCommands": false,
   "tunnelMode": "off",
   "cloudflareTunnelToken": "",
