@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "2026.07.24.2">
+<!ENTITY version     "2026.07.24.3">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,18 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24.3
+- Fix: the Settings page could reload itself endlessly in authorized
+  ("local") tunnel mode. Two causes: (1) the auto-refresh that waits for
+  the "Authorize with Cloudflare" link didn't check whether the tunnel was
+  actually running, so it kept reloading even with the tunnel stopped
+  (e.g. right after saving the hostname, before clicking Start) — fighting
+  your clicks; and (2) its reload counter was carried in a URL query
+  parameter that Unraid's Settings routing drops on navigation, so the
+  bound never took effect and it reloaded forever. The refresh now only
+  runs while the tunnel is genuinely starting up, and counts reloads in
+  sessionStorage so it reliably stops after ~30s if the authorization link
+  hasn't appeared.
 ###2026.07.24.2
 - Add a new opt-in, "Disable the hard-coded safety blocklist"
   (disableHardBlocklist in config.json, default off): when enabled, the

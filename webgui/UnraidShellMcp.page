@@ -669,26 +669,34 @@ usmUpdateTunnelFields();
 </script>
 
 <?php
-// Auto-refresh while an authorized-mode tunnel is between "just started"
-// and "fully up", so whichever of the two things worth seeing — the
-// authorization link, or the finished Public URL — appears on its own
-// instead of requiring a manual reload. Once either shows up there's
-// something for the operator to look at (either "go authorize" or "it's
-// done"), so this deliberately keeps polling through the create/route
-// window in between even though status already reports "running" there
-// (the tracked pid is alive throughout login/create/route/run alike, so
-// $cfRunning alone can't distinguish "still setting up" from "actually
-// serving" — only $publicUrl being set means the latter). It does NOT
-// refresh once $loginUrl is showing, since that's an indefinite wait on a
-// human, not something to poll for. Bounded via a query-string counter so
-// this can never loop forever if something's genuinely stuck rather than
-// just still starting up.
-if ($tunnelMode === 'local' && $loginUrl === '' && $publicUrl === '') {
-    $usmWait = isset($_GET['_usmwait']) ? (int) $_GET['_usmwait'] : 0;
-    if ($usmWait < 10) {
-        $usmNextWait = $usmWait + 1;
-        echo "<script>setTimeout(function(){ var u = new URL(location.href); u.searchParams.set('_usmwait', '$usmNextWait'); location.href = u.toString(); }, 2000);</" . "script>";
-    }
+// Auto-refresh while an authorized-mode tunnel is actually starting up but
+// hasn't yet produced its authorization link or final Public URL, so
+// whichever of those appears on its own instead of needing a manual reload.
+//
+// This is gated on $cfRunning: only poll while the tunnel process is alive
+// and genuinely mid-startup. When the tunnel is stopped — the common case
+// right after saving settings but before clicking "Start tunnel", or if
+// cloudflared exited — there is nothing to wait for, so reloading would
+// only fight the operator's clicks. (The tracked pid is alive throughout
+// login/create/route/run alike, so $cfRunning can't by itself tell "still
+// setting up" from "serving" — only $publicUrl being set means the latter,
+// which is why the loginUrl/publicUrl checks stay.) It does NOT refresh
+// once $loginUrl is showing, since that's an indefinite wait on a human.
+//
+// The reload count is bounded via sessionStorage, NOT a URL query
+// parameter: Unraid's Settings routing does not reliably carry an extra
+// query string across the navigation, which left the previous counter
+// stuck at 0 and reloaded the page forever. sessionStorage survives the
+// reload regardless and clears when the tab closes; we also clear it
+// whenever we're not in the polling state so a later start polls fresh.
+if ($tunnelMode === 'local' && $cfRunning && $loginUrl === '' && $publicUrl === '') {
+    echo "<script>(function(){"
+        . "var n=+(sessionStorage.getItem('usmWait')||0);"
+        . "if(n<15){sessionStorage.setItem('usmWait',n+1);setTimeout(function(){location.reload();},2000);}"
+        . "else{sessionStorage.removeItem('usmWait');}"
+        . "})();</" . "script>";
+} else {
+    echo "<script>sessionStorage.removeItem('usmWait');</" . "script>";
 }
 ?>
 
