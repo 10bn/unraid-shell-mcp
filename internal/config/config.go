@@ -66,6 +66,17 @@ type Config struct {
 	// value is false). Enabling it is logged loudly at startup.
 	AllowAllCommands bool `json:"allowAllCommands"`
 
+	// DisableHardBlocklist is a separate, more dangerous opt-in than
+	// AllowAllCommands: it removes the built-in catastrophic-operation
+	// safety net (raw block-device writes, mkfs/wipefs, array-destroying
+	// mdcmd commands, rm -rf /, fork bombs). With it on, only
+	// CommandBlacklist stands between the bearer token and an unrecoverable
+	// command. Defaults to false (zero value), and is logged loudly at
+	// startup when enabled. Kept deliberately distinct from AllowAllCommands
+	// so that removing the whitelist gate and removing the last safety net
+	// are never the same toggle.
+	DisableHardBlocklist bool `json:"disableHardBlocklist"`
+
 	// TunnelMode selects how cloudflared exposes the server: "off",
 	// "quick" (ephemeral trycloudflare.com URL, no account needed), or
 	// "named" (stable hostname via a Cloudflare Zero Trust tunnel token).

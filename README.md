@@ -110,12 +110,14 @@ because it effectively is one.
   everything" fallback — the only way to allow everything is the explicit
   `allowAllCommands` opt-in described below, which defaults to `false` and
   has to be deliberately set.
-- **Whitelist first, then blacklist, then a hard-coded, non-configurable
+- **Whitelist first, then blacklist, then a hard-coded
   blocklist for catastrophic operations** (raw writes to `/dev/sd*`/`/dev/md*`,
   destructive `mdcmd` array commands, `mkfs`/`wipefs`/`shred` against block
   devices, `rm -rf /`, fork bombs, etc.) is checked on every command — in that
   order — and the hard blocklist cannot be overridden by your whitelist, even
-  a maximally permissive one.
+  a maximally permissive one, nor by `allowAllCommands`. The one thing that
+  removes it is the separate, deliberately dangerous `disableHardBlocklist`
+  opt-in described below (default `false`).
 - **The bearer token is generated randomly on first run.** There is no
   default token. Rotate it any time from the Settings page.
 - **`config.json` is written with `0600` permissions**, and is never served
@@ -139,6 +141,18 @@ because it effectively is one.
   it is never the default, a fresh install/config file always has it
   `false`. Understand that enabling it hands full shell access to anyone
   with the bearer token before you flip it.
+- **`disableHardBlocklist` (default `false`) is a second, more dangerous
+  opt-in that removes the hard-coded blocklist entirely** — the built-in
+  safety net for catastrophic operations. It is deliberately a *separate*
+  switch from `allowAllCommands`: opening the whitelist gate and removing
+  the last backstop against an unrecoverable command are not the same
+  decision, so enabling one never implies the other. With it on, only your
+  own `commandBlacklist` stands between the bearer token and a command that
+  wipes a disk, destroys the array, or formats the boot device. It exists
+  for operators who need to run one of those blocked operations
+  deliberately (e.g. formatting a new disk from this tool) and accept full
+  responsibility. Enabling it is logged loudly at startup. Leave it `false`
+  unless you specifically need it.
 - **Output is capped at 1 MiB per stream (stdout/stderr).** A command that
   exceeds it is terminated immediately rather than left running until its
   timeout while consuming unbounded memory (e.g. `yes`, or `cat` on a huge

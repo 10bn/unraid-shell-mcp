@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $cfg !== null) {
         $cfg['commandWhitelist'] = usm_lines_to_list($_POST['commandWhitelist'] ?? '');
         $cfg['commandBlacklist'] = usm_lines_to_list($_POST['commandBlacklist'] ?? '');
         $cfg['allowAllCommands'] = isset($_POST['allowAllCommands']);
+        $cfg['disableHardBlocklist'] = isset($_POST['disableHardBlocklist']);
         $cfg['autostartMcp'] = isset($_POST['autostartMcp']);
         $cfg['autostartTunnel'] = isset($_POST['autostartTunnel']);
         $tunnelMode = $_POST['tunnelMode'] ?? 'off';
@@ -94,6 +95,7 @@ $loginUrl  = file_exists($loginUrlFile) ? trim(file_get_contents($loginUrlFile))
 $whitelistText    = $cfg !== null ? implode("\n", $cfg['commandWhitelist'] ?? []) : "";
 $blacklistText    = $cfg !== null ? implode("\n", $cfg['commandBlacklist'] ?? []) : "";
 $allowAllCommands = !empty($cfg['allowAllCommands']);
+$disableHardBlocklist = !empty($cfg['disableHardBlocklist']);
 // Default to enabled when the field is absent (config predating the
 // autostart toggles), matching how the Go side and event/started treat it.
 $autostartMcp    = $cfg !== null ? (!array_key_exists('autostartMcp', $cfg) || !empty($cfg['autostartMcp'])) : true;
@@ -164,6 +166,23 @@ $cfRunning  = strpos($cfStatus, ' is running') !== false;
     color: #0f5132;
     padding: 8px 14px;
     margin-bottom: 16px;
+    border-radius: 6px;
+}
+.usm-card.usm-danger {
+    border-color: #dc3545;
+    border-width: 2px;
+}
+.usm-danger .usm-card-header {
+    border-bottom-color: #dc3545;
+}
+.usm-danger .usm-card-header svg {
+    color: #dc3545;
+}
+.usm-danger-note {
+    background: #f8d7da;
+    border: 1px solid #f1aeb5;
+    color: #842029;
+    padding: 8px 14px;
     border-radius: 6px;
 }
 .usm-authorize-box {
@@ -432,6 +451,32 @@ textarea.usm-list {
     <p><strong>Use with care, and only if you know what you're doing.</strong></p>
 </div>
 
+<div class="usm-card usm-danger usm-section">
+    <div class="usm-card-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3>Disable the hard-coded safety blocklist</h3>
+    </div>
+    <p>
+        <label>
+            <input type="checkbox" id="disableHardBlocklist" name="disableHardBlocklist" <?= $disableHardBlocklist ? 'checked' : '' ?>>
+            Turn off the built-in catastrophic-operation safety net
+        </label>
+    </p>
+    <p>The hard-coded blocklist described further down &mdash; raw writes to block devices,
+       <code>mkfs</code>/<code>wipefs</code>/<code>blkdiscard</code>, array-destroying
+       <code>mdcmd</code> commands, <code>rm -rf /</code>, fork bombs &mdash; normally applies
+       <strong>no matter what</strong>, even with "Allow all commands" on. This checkbox removes it
+       entirely. It's a <em>separate</em> switch on purpose: allowing every command through the
+       whitelist is one decision; removing the last thing that stops an unrecoverable command is
+       another.</p>
+    <div class="usm-danger-note">
+        <strong>Danger:</strong> with this on, a single command from anyone holding the bearer token
+        can wipe a disk, destroy the array, or format the boot device, and it will run without
+        objection. Only your own command blacklist below still applies. Leave this off unless you
+        specifically need to run one of those operations from here and fully accept that risk.
+    </div>
+</div>
+
 <div class="usm-card usm-section">
     <div class="usm-card-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -499,9 +544,10 @@ textarea.usm-list {
 \bssh-keygen\b</pre>
 
     <p style="margin-top:16px;"><strong>What's in the hard-coded safety blocklist?</strong> Checked
-       first, before your whitelist or blacklist, and can never be disabled, edited, or overridden
-       &mdash; not even by "Allow all commands" above. It targets operations that would destroy
-       the array, the boot device, or the filesystem wholesale:</p>
+       first, before your whitelist or blacklist. It can't be edited, and "Allow all commands" does
+       not bypass it &mdash; only the separate "Disable the hard-coded safety blocklist" switch near
+       the top turns it off entirely (don't, unless you mean it). It targets operations that would
+       destroy the array, the boot device, or the filesystem wholesale:</p>
     <ul style="margin:6px 0 12px 18px;padding:0;">
         <li>Direct writes to a raw block device (<code>/dev/sd*</code>, <code>/dev/nvme*</code>,
             <code>/dev/md*</code>, <code>/dev/hd*</code>, <code>/dev/xvd*</code>) via

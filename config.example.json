@@ -30,6 +30,7 @@
     "\\bssh-keygen\\b"
   ],
   "allowAllCommands": false,
+  "disableHardBlocklist": false,
   "autostartMcp": true,
   "autostartTunnel": true,
   "tunnelMode": "off",
