@@ -3,7 +3,7 @@ package whitelist
 import "testing"
 
 func TestEmptyWhitelistFailsClosed(t *testing.T) {
-	m, err := New(nil, nil, false)
+	m, err := New(nil, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -14,7 +14,7 @@ func TestEmptyWhitelistFailsClosed(t *testing.T) {
 }
 
 func TestWhitelistAllowsMatchingCommand(t *testing.T) {
-	m, err := New([]string{`^echo\b.*$`, `^uptime$`}, nil, false)
+	m, err := New([]string{`^echo\b.*$`, `^uptime$`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestWhitelistAllowsMatchingCommand(t *testing.T) {
 }
 
 func TestWhitelistRejectsNonMatchingCommand(t *testing.T) {
-	m, err := New([]string{`^echo\b.*$`}, nil, false)
+	m, err := New([]string{`^echo\b.*$`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestWhitelistRequiresFullMatchNotPrefix(t *testing.T) {
 	// A whitelist entry anchored only at the start (a common mistake) must
 	// not allow shell metacharacters to smuggle in a second, unintended
 	// command after the part the pattern actually describes.
-	m, err := New([]string{`^echo\b`}, nil, false)
+	m, err := New([]string{`^echo\b`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestWhitelistRequiresFullMatchNotPrefix(t *testing.T) {
 }
 
 func TestUserBlacklistOverridesWhitelist(t *testing.T) {
-	m, err := New([]string{`.*`}, []string{`^cat\b`}, false)
+	m, err := New([]string{`.*`}, []string{`^cat\b`}, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestUserBlacklistOverridesWhitelist(t *testing.T) {
 func TestHardBlocklistCannotBeOverriddenByWhitelist(t *testing.T) {
 	// A maximally permissive user whitelist must not defeat the hard-coded
 	// blocklist for catastrophic operations.
-	m, err := New([]string{`.*`}, nil, false)
+	m, err := New([]string{`.*`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestHardBlocklistCannotBeOverriddenByWhitelist(t *testing.T) {
 }
 
 func TestHardBlocklistDoesNotFalsePositiveOnSafeCommands(t *testing.T) {
-	m, err := New([]string{`.*`}, nil, false)
+	m, err := New([]string{`.*`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestHardBlocklistCatchesGNULongOptionRmBypass(t *testing.T) {
 	// flag clusters (-rf, -fr, ...) for the "recursive force delete of
 	// root" rule. rm accepts the exact same behavior via GNU long options,
 	// in any order, which must be caught just as reliably.
-	m, err := New([]string{`.*`}, nil, false)
+	m, err := New([]string{`.*`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestHardBlocklistCatchesRawDeviceWritesViaOtherUtilities(t *testing.T) {
 	// dd/redirection/mkfs/wipefs/shred/blkdiscard aren't the only way to
 	// write straight to a block device; tee, cp, install, and rsync can too
 	// when given a /dev/sdX-style destination.
-	m, err := New([]string{`.*`}, nil, false)
+	m, err := New([]string{`.*`}, nil, false, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -165,16 +165,16 @@ func TestHardBlocklistCatchesRawDeviceWritesViaOtherUtilities(t *testing.T) {
 }
 
 func TestInvalidRegexReturnsError(t *testing.T) {
-	if _, err := New([]string{`(unclosed`}, nil, false); err == nil {
+	if _, err := New([]string{`(unclosed`}, nil, false, false); err == nil {
 		t.Fatal("expected error for invalid whitelist regex")
 	}
-	if _, err := New(nil, []string{`(unclosed`}, false); err == nil {
+	if _, err := New(nil, []string{`(unclosed`}, false, false); err == nil {
 		t.Fatal("expected error for invalid blacklist regex")
 	}
 }
 
 func TestAllowAllCommandsBypassesEmptyWhitelist(t *testing.T) {
-	m, err := New(nil, nil, true)
+	m, err := New(nil, nil, true, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestAllowAllCommandsBypassesEmptyWhitelist(t *testing.T) {
 func TestAllowAllCommandsStillBlockedByHardBlocklist(t *testing.T) {
 	// The opt-in widens the whitelist gate; it must never reach the
 	// hard-coded blocklist for catastrophic operations.
-	m, err := New(nil, nil, true)
+	m, err := New(nil, nil, true, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestAllowAllCommandsStillBlockedByHardBlocklist(t *testing.T) {
 }
 
 func TestAllowAllCommandsStillBlockedByUserBlacklist(t *testing.T) {
-	m, err := New(nil, []string{`^cat\b`}, true)
+	m, err := New(nil, []string{`^cat\b`}, true, false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -205,5 +205,71 @@ func TestAllowAllCommandsStillBlockedByUserBlacklist(t *testing.T) {
 	}
 	if allowed, reason := m.Allowed("echo hi"); !allowed {
 		t.Fatalf("expected non-blacklisted command to be allowed, got reason: %s", reason)
+	}
+}
+
+func TestDisableHardBlocklistLetsCatastrophicCommandsThrough(t *testing.T) {
+	// With the override on AND a permissive whitelist, the built-in
+	// catastrophic-operation blocklist no longer rejects these. This is the
+	// whole point of the flag; it is a deliberate, dangerous opt-in.
+	m, err := New([]string{`.*`}, nil, false, true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	formerlyBlocked := []string{
+		"dd if=/dev/zero of=/dev/sda",
+		"mkfs.ext4 /dev/md1",
+		"wipefs -a /dev/sda1",
+		"mdcmd stop",
+		"rm -rf /",
+		"rm --recursive --force /",
+	}
+	for _, cmd := range formerlyBlocked {
+		if allowed, reason := m.Allowed(cmd); !allowed {
+			t.Errorf("expected %q to be allowed with disableHardBlocklist on, rejected: %s", cmd, reason)
+		}
+	}
+}
+
+func TestDisableHardBlocklistStillRequiresWhitelistMatch(t *testing.T) {
+	// The override only removes the hard blocklist (step 1). It does not
+	// imply allowAllCommands: a command must still match the whitelist, and
+	// an empty whitelist still fails closed.
+	m, err := New(nil, nil, false, true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, _ := m.Allowed("rm -rf /"); allowed {
+		t.Fatal("expected empty whitelist to still reject even with hard blocklist disabled")
+	}
+}
+
+func TestDisableHardBlocklistStillHonorsUserBlacklist(t *testing.T) {
+	// The user's own blacklist (step 2) is independent of the hard blocklist
+	// and must keep applying even when the hard blocklist is disabled — it's
+	// the only backstop left, so it had better still work.
+	m, err := New(nil, []string{`\bmkfs\b`}, true, true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, reason := m.Allowed("mkfs.ext4 /dev/sda1"); allowed {
+		t.Fatalf("expected commandBlacklist to still reject under disableHardBlocklist, got: %s", reason)
+	}
+	// Something the hard blocklist would have caught but the user blacklist
+	// doesn't list is now allowed (with allowAllCommands also on here).
+	if allowed, reason := m.Allowed("dd if=/dev/zero of=/dev/sda"); !allowed {
+		t.Fatalf("expected non-blacklisted catastrophic command through with override, rejected: %s", reason)
+	}
+}
+
+func TestHardBlocklistOnByDefault(t *testing.T) {
+	// Sanity: the zero value of the new flag keeps the blocklist active, so
+	// no existing config silently loses protection.
+	m, err := New([]string{`.*`}, nil, true, false)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if allowed, _ := m.Allowed("rm -rf /"); allowed {
+		t.Fatal("expected hard blocklist active by default (disableHardBlocklist=false)")
 	}
 }

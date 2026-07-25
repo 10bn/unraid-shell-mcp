@@ -20,6 +20,18 @@
 // apply — allowAllCommands widens the whitelist gate, it does not disable
 // the blocklists.
 //
+// A second, separate opt-in, disableHardBlocklist, removes step 1 as well —
+// the built-in catastrophic-operation safety net. It is deliberately its
+// own flag, distinct from allowAllCommands, so that "let everything through
+// the whitelist gate" and "remove the last backstop against wiping a disk"
+// are never the same decision. It defaults off; turning it on means raw
+// block-device writes, mkfs/wipefs, array-destroying mdcmd commands,
+// rm -rf /, and fork bombs can all run if they otherwise pass. Only step 2,
+// the user-supplied blacklist, then stands between the bearer token and an
+// unrecoverable command. It exists for operators who need to run one of the
+// blocked operations deliberately (e.g. formatting a new disk from this
+// tool) and accept full responsibility for the consequences.
+//
 // Whitelist patterns require a full match rather than "appears somewhere in
 // the command" specifically to prevent injection via shell metacharacters:
 // since commands run through /bin/sh -c, a whitelist entry like `^echo\b`
@@ -117,10 +129,11 @@ func isRecursiveForceRootDelete(command string) bool {
 // Matcher evaluates commands against the hard blocklist plus a
 // user-configured whitelist/blacklist pair.
 type Matcher struct {
-	hardBlocklist []*regexp.Regexp
-	blacklist     []*regexp.Regexp
-	whitelist     []*regexp.Regexp
-	allowAll      bool
+	hardBlocklist    []*regexp.Regexp
+	blacklist        []*regexp.Regexp
+	whitelist        []*regexp.Regexp
+	allowAll         bool
+	disableHardBlock bool
 }
 
 // New compiles the user-supplied whitelist and blacklist patterns together
@@ -132,7 +145,12 @@ type Matcher struct {
 // matching the hard blocklist or commandBlacklist is allowed). It never
 // bypasses those two — they are defense-in-depth precisely so that even a
 // wide-open whitelist policy still can't run a catastrophic command.
-func New(userWhitelist, userBlacklist []string, allowAll bool) (*Matcher, error) {
+//
+// disableHardBlocklist is the config.json "disableHardBlocklist" opt-in:
+// when true, the built-in catastrophic-operation blocklist (step 1) is not
+// applied at all. This is a separate, deliberately independent flag from
+// allowAll; see the package doc for the consequences.
+func New(userWhitelist, userBlacklist []string, allowAll, disableHardBlocklist bool) (*Matcher, error) {
 	hard, err := compileAll(hardBlocklistPatterns)
 	if err != nil {
 		return nil, fmt.Errorf("internal hard blocklist pattern: %w", err)
@@ -145,7 +163,13 @@ func New(userWhitelist, userBlacklist []string, allowAll bool) (*Matcher, error)
 	if err != nil {
 		return nil, fmt.Errorf("commandBlacklist: %w", err)
 	}
-	return &Matcher{hardBlocklist: hard, blacklist: bl, whitelist: wl, allowAll: allowAll}, nil
+	return &Matcher{
+		hardBlocklist:    hard,
+		blacklist:        bl,
+		whitelist:        wl,
+		allowAll:         allowAll,
+		disableHardBlock: disableHardBlocklist,
+	}, nil
 }
 
 func compileAll(patterns []string) ([]*regexp.Regexp, error) {
@@ -162,12 +186,14 @@ func compileAll(patterns []string) ([]*regexp.Regexp, error) {
 
 // Allowed reports whether command may be executed, and if not, why.
 func (m *Matcher) Allowed(command string) (bool, string) {
-	if isRecursiveForceRootDelete(command) {
-		return false, "blocked by hard-coded safety rule (non-configurable)"
-	}
-	for _, re := range m.hardBlocklist {
-		if re.MatchString(command) {
+	if !m.disableHardBlock {
+		if isRecursiveForceRootDelete(command) {
 			return false, "blocked by hard-coded safety rule (non-configurable)"
+		}
+		for _, re := range m.hardBlocklist {
+			if re.MatchString(command) {
+				return false, "blocked by hard-coded safety rule (non-configurable)"
+			}
 		}
 	}
 	for _, re := range m.blacklist {

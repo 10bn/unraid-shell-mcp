@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "2026.07.24.1">
+<!ENTITY version     "2026.07.24.2">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,17 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24.2
+- Add a new opt-in, "Disable the hard-coded safety blocklist"
+  (disableHardBlocklist in config.json, default off): when enabled, the
+  built-in catastrophic-operation blocklist (raw block-device writes,
+  mkfs/wipefs, array-destroying mdcmd, rm -rf /, fork bombs) is not
+  applied at all. It's a deliberately separate switch from "Allow all
+  commands" — one opens the whitelist gate, the other removes the last
+  safety net — and is shown in its own red-bordered danger section with an
+  explicit warning. With it on, only your own command blacklist still
+  applies; enabling it is also logged loudly at server startup. Off on
+  every existing and fresh install; nothing changes unless you turn it on.
 ###2026.07.24.1
 - Fix: the 2026.07.24b package never actually installed as an upgrade.
   Unraid's upgradepkg compares package names with `sort -V`, which

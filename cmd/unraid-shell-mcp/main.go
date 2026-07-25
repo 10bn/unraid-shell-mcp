@@ -74,12 +74,18 @@ func main() {
 		log.Fatal("no bearer token configured; refusing to start unauthenticated")
 	}
 
-	matcher, err := whitelist.New(cfg.CommandWhitelist, cfg.CommandBlacklist, cfg.AllowAllCommands)
+	matcher, err := whitelist.New(cfg.CommandWhitelist, cfg.CommandBlacklist, cfg.AllowAllCommands, cfg.DisableHardBlocklist)
 	if err != nil {
 		log.Fatalf("invalid command whitelist/blacklist: %v", err)
 	}
 	if !cfg.AllowAllCommands && len(cfg.CommandWhitelist) == 0 {
 		log.Printf("warning: commandWhitelist is empty; all execute-command calls will be rejected until it is configured")
+	}
+	if cfg.DisableHardBlocklist {
+		log.Printf("WARNING: disableHardBlocklist is ON — the built-in safety net for catastrophic " +
+			"operations (raw disk writes, mkfs/wipefs, array-destroying mdcmd, rm -rf /, fork bombs) " +
+			"is DISABLED. Only commandBlacklist now stands between the bearer token and an " +
+			"unrecoverable command on this host.")
 	}
 
 	auditLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
