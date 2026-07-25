@@ -24,7 +24,11 @@ URLFILE="/var/run/unraid-shell-mcp-cloudflared-url.txt"
 CF_STATE_DIR="/boot/config/plugins/unraid-shell-mcp/cloudflared"
 CF_HOME_DIR="$CF_STATE_DIR/home"
 CF_CERT="$CF_HOME_DIR/.cloudflared/cert.pem"
-CF_TUNNEL_NAME="unraid-shell-mcp"
+# The tunnel name is derived per-host from the configured hostname (see
+# run_local_tunnel), not hard-coded, so two Unraid servers sharing one
+# Cloudflare account don't both try to create a tunnel of the same name.
+# This prefix just keeps the generated names recognizable in the dashboard.
+CF_TUNNEL_NAME_PREFIX="usm"
 CF_TUNNEL_ID_FILE="$CF_STATE_DIR/tunnel_id"
 CF_CONFIG_YML="$CF_HOME_DIR/.cloudflared/config.yml"
 LOGIN_LOGFILE="/var/log/unraid-shell-mcp-cloudflared-login.log"
@@ -84,6 +88,15 @@ run_local_tunnel() {
     local listen_addr="$2"
     local current_child=""
 
+    # Derive a Cloudflare tunnel name unique to this server. It used to be
+    # hard-coded to "unraid-shell-mcp", which collides when two Unraid boxes
+    # share one Cloudflare account: the second's `tunnel create` fails with
+    # "already exists", and it can't obtain credentials for a tunnel the
+    # first one owns. The configured hostname is unique per endpoint, so
+    # base the name on it, sanitized to the characters a tunnel name allows.
+    local tunnel_name
+    tunnel_name="${CF_TUNNEL_NAME_PREFIX}-$(printf '%s' "$hostname" | tr -c 'a-zA-Z0-9' '-' | sed 's/--*/-/g; s/-$//')"
+
     # `tunnel login` alone can block for minutes waiting on a human to
     # authorize. Killing just this function's own pid on stop() (the normal
     # way every other mode is stopped) would not by itself touch whichever
@@ -123,30 +136,48 @@ run_local_tunnel() {
         tunnel_id="$(cat "$CF_TUNNEL_ID_FILE")"
     fi
     if [ -z "$tunnel_id" ] || [ ! -f "$CF_HOME_DIR/.cloudflared/$tunnel_id.json" ]; then
-        echo "Creating tunnel '$CF_TUNNEL_NAME'..."
+        # (Re)create the tunnel to obtain a fresh local credentials file. The
+        # new tunnel is identified by diffing .cloudflared/*.json before and
+        # after — reliable regardless of how cloudflared formats its stdout.
         local before after new_file create_rc
+        echo "Creating tunnel '$tunnel_name'..."
         before="$(ls "$CF_HOME_DIR"/.cloudflared/*.json 2>/dev/null | sort)"
-        HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel create "$CF_TUNNEL_NAME" >>"$LOGFILE" 2>&1 &
+        HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel create "$tunnel_name" >>"$LOGFILE" 2>&1 &
         current_child=$!
         wait "$current_child"
         create_rc=$?
         current_child=""
-        if [ "$create_rc" -ne 0 ]; then
-            echo "'tunnel create' reported an error (harmless if '$CF_TUNNEL_NAME' already exists from a previous run whose id this script lost track of); checking for it..."
-        fi
         after="$(ls "$CF_HOME_DIR"/.cloudflared/*.json 2>/dev/null | sort)"
         new_file="$(comm -13 <(echo "$before") <(echo "$after") | head -n1)"
+
+        if [ -z "$new_file" ] && [ "$create_rc" -ne 0 ]; then
+            # create failed and wrote no credentials — almost always because a
+            # tunnel with this (host-unique) name already exists from an
+            # earlier run on THIS server whose local credentials we no longer
+            # have. Credentials for an existing tunnel can't be re-downloaded,
+            # so delete it and create it fresh. Safe precisely because the name
+            # is derived from this server's own unique hostname and isn't
+            # shared with any other machine's tunnel.
+            echo "Tunnel '$tunnel_name' already exists but its local credentials are gone; recreating it..."
+            HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel cleanup "$tunnel_name" >>"$LOGFILE" 2>&1 || true
+            HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel delete -f "$tunnel_name" >>"$LOGFILE" 2>&1 &
+            current_child=$!
+            wait "$current_child"
+            current_child=""
+            before="$(ls "$CF_HOME_DIR"/.cloudflared/*.json 2>/dev/null | sort)"
+            HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel create "$tunnel_name" >>"$LOGFILE" 2>&1 &
+            current_child=$!
+            wait "$current_child"
+            current_child=""
+            after="$(ls "$CF_HOME_DIR"/.cloudflared/*.json 2>/dev/null | sort)"
+            new_file="$(comm -13 <(echo "$before") <(echo "$after") | head -n1)"
+        fi
+
         if [ -n "$new_file" ]; then
             tunnel_id="$(basename "$new_file" .json)"
-        else
-            # Fall back to asking cloudflared directly for the existing
-            # tunnel's id if create failed because it already exists.
-            tunnel_id="$(HOME="$CF_HOME_DIR" "$CLOUDFLARED_BINARY" tunnel list -o json 2>>"$LOGFILE" \
-                | grep -oE '"id":"[a-f0-9-]{36}"[^}]*"name":"'"$CF_TUNNEL_NAME"'"' \
-                | grep -oE '[a-f0-9-]{36}' | head -n1)"
         fi
         if [ -z "$tunnel_id" ]; then
-            echo "Could not determine the tunnel id after 'tunnel create'; see $LOGFILE"
+            echo "Could not create the tunnel or determine its id; see $LOGFILE"
             return 1
         fi
         echo "$tunnel_id" >"$CF_TUNNEL_ID_FILE"

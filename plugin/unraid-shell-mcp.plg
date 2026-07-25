@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "unraid-shell-mcp">
 <!ENTITY author      "10bn">
-<!ENTITY version     "2026.07.24.3">
+<!ENTITY version     "2026.07.24.4">
 <!ENTITY launch      "Settings/UnraidShellMcp">
 <!ENTITY repo        "10bn/unraid-shell-mcp">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/&repo;/main/plugin/&name;.plg">
@@ -21,6 +21,23 @@
 
 <CHANGES>
 ##&name;
+###2026.07.24.4
+- Fix: authorized ("local") tunnel mode could never start on a second
+  Unraid server that shares one Cloudflare account with another. The
+  Cloudflare tunnel name was hard-coded to "unraid-shell-mcp", so the
+  second server's `tunnel create` failed with "tunnel with name already
+  exists" — and it could not obtain credentials for a tunnel the first
+  server owns, so it gave up with "Could not determine the tunnel id".
+  The tunnel name is now derived from each server's configured hostname
+  (unique per endpoint), so servers in the same account no longer collide.
+  Servers already running keep their existing tunnel (their tunnel id is
+  remembered), so this changes nothing for them.
+- Also: if a tunnel with the (now host-unique) name exists but its local
+  credentials were lost — e.g. after wiping and reinstalling the same
+  server — the tunnel is now deleted and recreated to get a fresh
+  credentials file, instead of failing. And the broken fallback that
+  parsed `cloudflared tunnel list` output has been removed (it never
+  matched the real multi-line JSON format anyway).
 ###2026.07.24.3
 - Fix: the Settings page could reload itself endlessly in authorized
   ("local") tunnel mode. Two causes: (1) the auto-refresh that waits for
