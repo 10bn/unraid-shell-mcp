@@ -1,0 +1,27 @@
+#!/bin/bash
+#
+# event/started - Unraid's emhttp_event calls this automatically once the
+# array has fully started (every boot, and after any manual array
+# start/stop). This is what actually gets unraid-shell-mcp and its
+# optional Cloudflare tunnel running again on their own after a reboot;
+# the plugin's own install-time bash (in unraid-shell-mcp.plg) only runs
+# when the plugin itself is installed or updated, not on every boot.
+#
+# Each service starts only if its autostart toggle on the Settings page is
+# enabled (autostartMcp / autostartTunnel in config.json, both default
+# on). The comparison is against the literal string "false" so anything
+# unexpected — config-get failing, the binary missing, a field an older
+# config file doesn't have — fails open to starting, matching the
+# always-start behavior this hook shipped with. Both rc.d scripts also
+# no-op safely on their own (the cloudflared one does nothing if
+# tunnelMode is "off"; both do nothing if already running).
+
+BINARY="/usr/local/sbin/unraid-shell-mcp"
+CONFIG="/boot/config/plugins/unraid-shell-mcp/config.json"
+
+if [ "$("$BINARY" config-get -config "$CONFIG" autostartMcp 2>/dev/null)" != "false" ]; then
+    /etc/rc.d/rc.unraid-shell-mcp start
+fi
+if [ "$("$BINARY" config-get -config "$CONFIG" autostartTunnel 2>/dev/null)" != "false" ]; then
+    /etc/rc.d/rc.unraid-shell-mcp-cloudflared start
+fi

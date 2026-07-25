@@ -1,0 +1,12 @@
+             |-----handy-ruler------------------------------------------------|
+unraid-shell-mcp: unraid-shell-mcp (MCP server for shell access on Unraid)
+unraid-shell-mcp:
+unraid-shell-mcp: unraid-shell-mcp runs a Model Context Protocol (MCP) server
+unraid-shell-mcp: directly on the Unraid host, letting an MCP client execute
+unraid-shell-mcp: whitelisted shell commands over HTTP with bearer-token auth.
+unraid-shell-mcp:
+unraid-shell-mcp: WARNING: this grants full shell access to your NAS (array,
+unraid-shell-mcp: Docker, VMs, shares). Configure the whitelist carefully and
+unraid-shell-mcp: use Cloudflare Access if exposed remotely.
+unraid-shell-mcp:
+unraid-shell-mcp: https://github.com/10bn/unraid-shell-mcp

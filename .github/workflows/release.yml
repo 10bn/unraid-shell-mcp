@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 2026.07.24 or 2026.07.24.1 (no leading v)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Derive version and tag name
+        id: version
+        env:
+          # Passed via env rather than interpolated directly into the script
+          # below (i.e. not `version="${{ inputs.version }}"`): workflow_dispatch
+          # inputs are attacker-influenceable free text, and GitHub Actions'
+          # `${{ }}` expressions substitute textually into the run: script
+          # before the shell ever parses it — a version string containing
+          # shell metacharacters would execute as code in a runner that holds
+          # contents:write and pushes to main. Routing it through env keeps it
+          # as inert data; the regex check below then guarantees every
+          # downstream `${{ steps.version.outputs.* }}` use elsewhere in this
+          # workflow is safe too, since by construction it can only ever be
+          # digits and dots.
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          # Date-based versions (YYYY.MM.DD, plus an optional numeric .N for
+          # a second release on the same day). Two different version
+          # comparisons must both accept an update: Unraid's plugin manager
+          # compares .plg versions with plain strcmp (which broke the old
+          # 0.1.x scheme: 0.1.10 sorted below 0.1.9), and its upgradepkg
+          # compares installed package names with `sort -V` (which broke a
+          # letter suffix: 2026.07.24b sorted below 2026.07.24, so the
+          # package was skipped as "newer version already installed").
+          # Digits-and-dots-only survives both; letters allowed nowhere.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid version '$version' (expected e.g. 2026.07.24 or 2026.07.24.1)"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build statically linked binary + Slackware package
+        run: make -C plugin/package VERSION=${{ steps.version.outputs.version }}
+
+      - name: Verify binary is statically linked
+        run: file plugin/package/root/usr/local/sbin/unraid-shell-mcp | grep "statically linked"
+
+      - name: Generate release .plg with this version's entities
+        run: |
+          mkdir -p release-assets
+          sed -E "s/<!ENTITY version(\s+)\"[^\"]*\">/<!ENTITY version\1\"${{ steps.version.outputs.version }}\">/" \
+            plugin/unraid-shell-mcp.plg > release-assets/unraid-shell-mcp.plg
+
+      - name: Validate .plg XML
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libxml2-utils
+          xmllint --noout release-assets/unraid-shell-mcp.plg
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            plugin/package/out/*.txz \
+            plugin/package/out/*.txz.md5 \
+            release-assets/unraid-shell-mcp.plg \
+            --title "unraid-shell-mcp ${{ steps.version.outputs.version }}" \
+            --generate-notes
+
+      - name: Update plugin descriptor on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          git checkout main
+          sed -E -i "s/<!ENTITY version(\s+)\"[^\"]*\">/<!ENTITY version\1\"${{ steps.version.outputs.version }}\">/" \
+            plugin/unraid-shell-mcp.plg
+          if ! git diff --quiet -- plugin/unraid-shell-mcp.plg; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add plugin/unraid-shell-mcp.plg
+            git commit -m "release: bump unraid-shell-mcp.plg to ${{ steps.version.outputs.version }}"
+            git push origin main
+          else
+            echo "plugin/unraid-shell-mcp.plg already at ${{ steps.version.outputs.version }}; nothing to commit"
+          fi
